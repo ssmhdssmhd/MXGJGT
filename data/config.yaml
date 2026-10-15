@@ -1,0 +1,25 @@
+# MXGJGT 主配置文件
+server:
+  port: 8080
+  mode: release
+  # 自定义伪装 404 HTML 文件路径（留空则用默认 JSON 伪装）
+  not_found_html: ""
+
+# 自动更新配置
+updater:
+  enabled: false
+  # cron 表达式（秒 分 时 日 月 周）
+  interval: "0 0 3 * * *"
+  branch: main
+  repo_url: "https://github.com/example/mxgjgt.git"
+  # 国内加速镜像，{origin} 会被替换为 repo_url
+  mirrors:
+    - "https://ghproxy.com/{origin}"
+    - "https://mirror.ghproxy.com/{origin}"
+    - "https://gh-proxy.com/{origin}"
+  use_proxy: true
+
+# 安全
+security:
+  # 为空则不鉴权；设置后 /api/update 需携带 X-API-Key 或 ?key=xxx
+  api_key: ""
