@@ -1,11 +1,11 @@
 package service
 
 import (
-	"io"
-	"net/http"
+	"encoding/json"
 	"net/url"
+	"sort"
 	"strings"
-	"time"
+	"sync"
 
 	"mxgjgt/config"
 	"mxgjgt/model"
@@ -14,42 +14,107 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// SearchResource 在所有启用的资源站中搜索影视
+// SearchResource 在所有启用的资源站中搜索影视（并发）
 func SearchResource(title, episode string) []model.SearchResult {
 	sites := config.GetSites()
-	var results []model.SearchResult
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		results []model.SearchResult
+	)
 
 	for _, site := range sites {
 		if !site.Enabled {
 			continue
 		}
-		kw := title
-		if episode != "" {
-			kw = title + " 第" + episode + "集"
-		}
-		kw = strings.TrimSpace(kw)
-
-		result, err := searchOneSite(site, kw)
-		if err != nil || len(result) == 0 {
-			continue
-		}
-		results = append(results, result...)
+		wg.Add(1)
+		go func(site model.ResourceSite) {
+			defer wg.Done()
+			kw := strings.TrimSpace(title)
+			got, err := searchOneSite(site, kw)
+			if err != nil || len(got) == 0 {
+				return
+			}
+			mu.Lock()
+			results = append(results, got...)
+			mu.Unlock()
+		}(site)
 	}
+	wg.Wait()
 
 	return results
 }
 
-// searchOneSite 从单个资源站搜索
+// searchOneSite 根据资源站类型分发
 func searchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResult, error) {
-	var encoded string
-	switch strings.ToLower(site.Encode) {
-	case "gb2312", "gbk":
-		encoded = url.QueryEscape(keyword)
+	switch strings.ToLower(site.Type) {
+	case "applecms", "acms", "cms":
+		return searchAppleCMS(site, keyword)
 	default:
-		encoded = url.QueryEscape(keyword)
+		return searchHTML(site, keyword)
+	}
+}
+
+// ========== 苹果CMS 接口搜索 ==========
+
+func searchAppleCMS(site model.ResourceSite, keyword string) ([]model.SearchResult, error) {
+	encoded := url.QueryEscape(keyword)
+	target := strings.ReplaceAll(site.URL, "{keyword}", encoded)
+
+	body, err := utils.GetHTML(target, nil)
+	if err != nil {
+		return nil, err
 	}
 
+	var resp model.AcmsListResponse
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 1 || len(resp.List) == 0 {
+		return nil, nil
+	}
+
+	var results []model.SearchResult
+	for _, v := range resp.List {
+		r := model.SearchResult{
+			Title:      v.VodName,
+			Site:       site.Name,
+			ResourceID: itoa(v.VodID),
+			Type:       v.TypeName,
+			Remark:     v.VodRemark,
+			PlayFrom:   v.VodPlayFrom,
+			PlayURL:    v.VodPlayURL,
+		}
+
+		// 构造详情 URL
+		if site.DetailURL != "" {
+			r.URL = strings.ReplaceAll(site.DetailURL, "{id}", itoa(v.VodID))
+		}
+
+		results = append(results, r)
+	}
+
+	// 按标题匹配度排序（精确匹配优先）
+	sort.SliceStable(results, func(i, j int) bool {
+		return scoreMatch(keyword, results[i].Title) > scoreMatch(keyword, results[j].Title)
+	})
+
+	// 标记精确匹配
+	if len(results) > 0 {
+		best := results[0]
+		best.Matched = scoreMatch(keyword, best.Title) >= 80
+		results[0] = best
+	}
+
+	return results, nil
+}
+
+// ========== HTML 资源站搜索 ==========
+
+func searchHTML(site model.ResourceSite, keyword string) ([]model.SearchResult, error) {
+	encoded := url.QueryEscape(keyword)
 	target := strings.ReplaceAll(site.URL, "{keyword}", encoded)
+
 	html, err := utils.GetHTML(target, nil)
 	if err != nil {
 		return nil, err
@@ -64,10 +129,9 @@ func searchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResul
 	doc.Find(site.Selector).Each(func(i int, s *goquery.Selection) {
 		var title, link string
 		if site.TitleAttr != "" {
-			if strings.Contains(site.TitleAttr, " @") {
-				// 复合选择器: 选择器@属性
+			if strings.Contains(site.TitleAttr, "@") {
 				parts := strings.SplitN(site.TitleAttr, "@", 2)
-				title = s.Find(parts[0]).AttrOr(parts[1], "")
+				title = s.Find(strings.TrimSpace(parts[0])).AttrOr(strings.TrimSpace(parts[1]), "")
 			} else {
 				title = s.Find(site.TitleAttr).Text()
 			}
@@ -76,12 +140,9 @@ func searchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResul
 		}
 
 		if site.LinkAttr != "" {
-			if strings.Contains(site.LinkAttr, " @") {
+			if strings.Contains(site.LinkAttr, "@") {
 				parts := strings.SplitN(site.LinkAttr, "@", 2)
-				link = s.Find(parts[0]).AttrOr(parts[1], "")
-			} else if strings.Contains(site.LinkAttr, "@") {
-				parts := strings.SplitN(site.LinkAttr, "@", 2)
-				link = s.AttrOr(parts[1], "")
+				link = s.Find(strings.TrimSpace(parts[0])).AttrOr(strings.TrimSpace(parts[1]), "")
 			} else {
 				link = s.Find(site.LinkAttr).AttrOr("href", "")
 			}
@@ -93,7 +154,6 @@ func searchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResul
 			return
 		}
 
-		// 相对链接转绝对
 		if strings.HasPrefix(link, "/") {
 			if u, err := url.Parse(target); err == nil {
 				link = u.Scheme + "://" + u.Host + link
@@ -110,8 +170,160 @@ func searchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResul
 	return results, nil
 }
 
-// 备用的通用 HTTP 辅助（避免循环依赖）
-func init() {
-	http.DefaultClient.Timeout = 10 * time.Second
-	_ = io.Discard
+// ========== 详情获取 + 播放列表解析 ==========
+
+// FetchDetail 获取资源站详情（含播放列表）
+func FetchDetail(site model.ResourceSite, resourceID string) (*model.SearchResult, []model.EpisodePlay, error) {
+	if site.Type != "applecms" || site.DetailURL == "" || resourceID == "" {
+		return nil, nil, nil
+	}
+
+	target := strings.ReplaceAll(site.DetailURL, "{id}", resourceID)
+	body, err := utils.GetHTML(target, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var resp struct {
+		Code int          `json:"code"`
+		List []model.AcmsVideo `json:"list"`
+	}
+	if err := json.Unmarshal([]byte(body), &resp); err != nil {
+		return nil, nil, err
+	}
+	if resp.Code != 1 || len(resp.List) == 0 {
+		return nil, nil, nil
+	}
+
+	v := resp.List[0]
+	res := &model.SearchResult{
+		Title:      v.VodName,
+		Site:       site.Name,
+		ResourceID: itoa(v.VodID),
+		Type:       v.TypeName,
+		Remark:     v.VodRemark,
+		PlayFrom:   v.VodPlayFrom,
+		PlayURL:    v.VodPlayURL,
+	}
+
+	// 解析播放列表
+	episodes := parsePlayList(v.VodPlayURL)
+
+	return res, episodes, nil
+}
+
+// parsePlayList 解析苹果CMS播放列表
+// 格式: 源名1$$$播放1#播放2#播放3$$$源名2$$$播放...
+// 每项: 集数$URL
+func parsePlayList(raw string) []model.EpisodePlay {
+	if raw == "" {
+		return nil
+	}
+
+	var episodes []model.EpisodePlay
+
+	// 按 $$$ 分割多个播放源
+	sources := strings.Split(raw, "$$$")
+	for _, src := range sources {
+		src = strings.TrimSpace(src)
+		if src == "" {
+			continue
+		}
+
+		// 按 # 分割每集
+		parts := strings.Split(src, "#")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			kv := strings.SplitN(part, "$", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			episodes = append(episodes, model.EpisodePlay{
+				Episode: strings.TrimSpace(kv[0]),
+				URL:     strings.TrimSpace(kv[1]),
+			})
+		}
+
+		// 只取第一个源（最清晰）
+		break
+	}
+
+	return episodes
+}
+
+// ========== 工具函数 ==========
+
+// scoreMatch 计算关键字与标题的匹配度 (0-100)
+func scoreMatch(keyword, title string) int {
+	if keyword == "" || title == "" {
+		return 0
+	}
+	k := strings.ToLower(strings.ReplaceAll(keyword, " ", ""))
+	t := strings.ToLower(strings.ReplaceAll(title, " ", ""))
+
+	// 完全相等
+	if k == t {
+		return 100
+	}
+	// 标题包含关键字
+	if strings.Contains(t, k) {
+		return 90
+	}
+	// 关键字包含标题
+	if strings.Contains(k, t) {
+		return 85
+	}
+	// 包含主要关键词
+	kwords := splitKeywords(keyword)
+	if len(kwords) > 0 {
+		hit := 0
+		for _, kw := range kwords {
+			if kw != "" && strings.Contains(t, kw) {
+				hit++
+			}
+		}
+		if hit == len(kwords) && len(kwords) > 0 {
+			return 75
+		}
+		return hit * 15
+	}
+	return 0
+}
+
+func splitKeywords(s string) []string {
+	// 按常见分隔符 + 单字切分，提取 2+ 字词
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '/' || r == '\\' || r == '_' || r == '-' || r == ':' || r == '|'
+	})
+	if len(fields) == 0 {
+		fields = []string{s}
+	}
+	return fields
+}
+
+// itoa int -> string
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	neg := false
+	if i < 0 {
+		neg = true
+		i = -i
+	}
+	var buf [20]byte
+	pos := len(buf)
+	for i > 0 {
+		pos--
+		buf[pos] = byte('0' + i%10)
+		i /= 10
+	}
+	if neg {
+		pos--
+		buf[pos] = '-'
+	}
+	return string(buf[pos:])
 }

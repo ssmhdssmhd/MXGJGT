@@ -1,0 +1,88 @@
+MXGJGT v0.0.2 202610152326
+===========================
+
+## 功能升级 — 接入苹果CMS采集接口，完整清洗链路打通
+
+### ✅ 新增功能
+
+1. **接入吉吉资源 M3U8 苹果CMS采集接口**
+   - 列表搜索: http://caiji.jjzyapi.com/api.php/provide/vod/?ac=list&wd={keyword}
+   - 详情播放: http://caiji.jjzyapi.com/api.php/provide/vod/?ac=detail&ids={id}
+   - 自动解析 vod_play_url（源名$$$播放列表#每集$URL）
+   - 返回全集 M3U8 播放地址
+
+2. **资源站多类型支持**
+   - type: applecms  (苹果CMS JSON API)
+   - type: html      (普通 HTML 页面 goquery 解析)
+   - 配置文件: data/sites.yaml
+
+3. **智能匹配排序**
+   - scoreMatch() 按匹配度排序（完全相等100 / 标题包含90 / 关键词包含度）
+   - 自动标记 Matched 精确匹配
+   - pickBestMatch() 选最优结果
+
+4. **新增接口 /api/search/?wd=关键词**
+   - 直接关键词搜索（无需官方视频链接）
+   - 支持 episode 参数指定集数
+   - 返回最佳匹配 + 全集播放列表 + 替换链接
+
+5. **增强 /api/clean/?url=**
+   - 自动 FetchDetail 获取全集播放列表
+   - 返回 best_match + episodes + replacement
+   - 若指定 episode 则精确返回该集播放链接
+
+### 🐛 Bug 修复
+
+1. **HTTP 客户端超时** — 自定义 Transport（MaxIdleConns/MaxIdleConnsPerHost）导致苹果CMS接口请求 20 秒超时，去掉自定义 Transport 改用默认后 1.4 秒返回
+2. **User-Agent** 过长导致部分接口异常，精简为 "Mozilla/5.0 (compatible; MXGJGT/1.0)"
+3. **go.sum/go.mod 清理** — 移除未使用依赖
+4. **FetchDetail 返回值** — 修复多返回值调用编译错误
+
+### 📋 完整链路测试（庆余年）
+
+```
+搜索结果: 7 条
+最佳匹配: [吉吉资源 M3U8] id=42023 "庆余年，全世界都以为我是废物太子" (短剧·已完结)
+全集播放列表: 81 集
+  第1集 -> https://svip.jijiplay1.com/watch/eb/46f7/76923ae3/553869dd...
+  第2集 -> https://svip.jijiplay1.com/watch/0a/b72e/c1a7d191/485ebcac...
+  第3集 -> https://svip.jijiplay1.com/watch/ac/5afc/c0999317/dd7c8eb8...
+... 还有 78 集
+✅ 替换链接: https://svip.jijiplay1.com/watch/eb/46f7/76923ae3/553869dd...
+```
+
+### 📁 变更文件
+
+```
+modified: data/sites.yaml      # 新增吉吉资源 M3U8 配置
+modified: handler/api.go       # 新增 /api/search/ 接口 + best_match/episodes 返回
+modified: handler/version.go   # 0.0.1 → 0.0.2
+modified: model/types.go       # ResourceSite 加 type/detail_url，SearchResult 扩展字段，新增 EpisodePlay/AcmsListResponse
+modified: service/resource.go  # 全新重构：苹果CMS JSON API 搜索 + HTML 通用搜索 + FetchDetail + 播放列表解析 + 匹配度排序
+modified: utils/utils.go       # 修复自定义 Transport 导致超时，简化 Header
+new:      update.log           # 版本更新日志
+```
+
+---
+
+MXGJGT v0.0.1 202610152103
+===========================
+
+## 首次发布 - 视频链接清洗伪装服务
+
+### ✅ 完成功能
+
+1. **基础框架** — Go 1.25 + Gin v1.12，模块化结构
+2. **伪装 404** — 根路径和任意未知路径返回 `{"code":404,"msg":"页面未找到"}`
+3. **七大平台识别** — 腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / 哔哩哔哩
+4. **影视信息提取** — URL + 官方页面 HTML meta 双重提取，正则识别集数
+5. **自动更新机制** — Cron + 镜像测速 + git pull + go build
+6. **API Key 保护** — /api/update 接口可配置鉴权
+
+### 📁 新增文件
+
+main.go / handler/api.go / handler/version.go
+service/parser.go / service/resource.go / service/updater.go
+config/config.go / model/types.go / utils/utils.go
+data/config.yaml / data/sites.yaml / static/404.html
+README.md / .gitignore / go.mod / go.sum

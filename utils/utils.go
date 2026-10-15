@@ -11,13 +11,7 @@ import (
 
 // HTTPClient 带超时的 http 客户端
 var HTTPClient = &http.Client{
-	Timeout: 5 * time.Second,
-	Transport: &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
-		DisableKeepAlives:   true,
-	},
+	Timeout: 20 * time.Second,
 }
 
 // GetHTML 发起 GET 请求获取 HTML
@@ -26,8 +20,7 @@ func GetHTML(targetURL string, headers map[string]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; MXGJGT/1.0)")
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

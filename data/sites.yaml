@@ -1,35 +1,22 @@
-# 资源站列表（搜索影视的来源）
-# 说明：
-#   selector: goquery 选择器，选取搜索结果列表项
-#   title_attr: 标题提取方式，支持 "选择器@属性" 或纯选择器
-#   link_attr: 链接提取方式，格式同 title_attr
-#   encode: url / gb2312 / utf8
-#
-# 使用前请根据目标网站实际 DOM 结构调整 selector / attr
+# ========================
+# 资源站列表
+# type: applecms = 苹果CMS采集接口（推荐）
+# type: html     = 普通 HTML 页面
+# ========================
 
-- name: "豆瓣电影"
-  url: "https://search.douban.com/movie/subject_search?search_text={keyword}&cat=1002"
+- name: "吉吉资源 M3U8"
+  type: applecms
+  url: "http://caiji.jjzyapi.com/api.php/provide/vod/?ac=list&wd={keyword}"
+  detail_url: "http://caiji.jjzyapi.com/api.php/provide/vod/?ac=detail&ids={id}"
   encode: "utf8"
-  selector: ".item-root"
-  title_attr: ".title-text"
-  link_attr: ".title-text a@href"
-  enabled: false
+  enabled: true
 
-- name: "豆瓣电视剧"
-  url: "https://search.douban.com/movie/subject_search?search_text={keyword}&cat=1003"
-  encode: "utf8"
-  selector: ".item-root"
-  title_attr: ".title-text"
-  link_attr: ".title-text a@href"
-  enabled: false
-
-# v.qq.com 官方内部搜索（示例，实际可能需要登录/反爬）
-- name: "腾讯视频搜索"
-  url: "https://pbaccess.video.qq.com/trpc.videosearch.mobile_search.MultiTerminalSearch/MbSearch?t={keyword}"
-  encode: "utf8"
-  selector: "none"
-  title_attr: ""
-  link_attr: ""
-  enabled: false
-
-# 可继续追加其他公共搜索源...
+# ======== 以下为 HTML 类型示例（可自行调整选择器启用）========
+# - name: "示例HTML资源站"
+#   type: html
+#   url: "https://example.com/search?kw={keyword}"
+#   encode: "utf8"
+#   selector: ".result-item"
+#   title_attr: ".title"
+#   link_attr: "a@href"
+#   enabled: false
