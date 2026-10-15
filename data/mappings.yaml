@@ -1,0 +1,19 @@
+# ========================
+# 官方视频站 → 资源站 优先映射
+# 列表中资源站 ID 按优先级排序
+# ========================
+
+- official: "腾讯视频"
+  sites: ["jjm3u8"]
+- official: "爱奇艺"
+  sites: ["jjm3u8"]
+- official: "优酷"
+  sites: ["jjm3u8"]
+- official: "芒果TV"
+  sites: ["jjm3u8"]
+- official: "搜狐视频"
+  sites: ["jjm3u8"]
+- official: "乐视视频"
+  sites: ["jjm3u8"]
+- official: "哔哩哔哩"
+  sites: ["jjm3u8"]

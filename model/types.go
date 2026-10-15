@@ -1,47 +1,77 @@
 // Package model 定义全局数据类型
 package model
 
-// Response 统一 API 返回格式
+// Response 统一 JSON 返回格式
+// 简洁成功返回: {"code":200,"jm":"庆余年","jj":"第12集","url":"https://...","msg":"https://...","time":"...","kfz":"射手沫蝴蝶"}
 type Response struct {
-	Code int         `json:"code"`
-	Msg  string      `json:"msg"`
-	Data interface{} `json:"data,omitempty"`
+	Code int    `json:"code"`
+	JM   string `json:"jm,omitempty"`    // 剧名
+	JJ   string `json:"jj,omitempty"`    // 剧集集数
+	URL  string `json:"url,omitempty"`   // 替换后的播放地址
+	Msg  string `json:"msg,omitempty"`   // 同 url（或错误消息）
+	Time string `json:"time,omitempty"`  // 响应时间
+	KFZ  string `json:"kfz,omitempty"`   // 开发商/制作方
+	Data any    `json:"data,omitempty"`  // 后台管理扩展数据
+}
+
+// OK 构造成功响应
+func OK(jm, jj, url string) Response {
+	return Response{
+		Code: 200,
+		JM:   jm,
+		JJ:   jj,
+		URL:  url,
+		Msg:  url,
+	}
+}
+
+// Fail 构造失败响应
+func Fail(code int, msg string) Response {
+	return Response{Code: code, Msg: msg}
 }
 
 // VideoSite 官方视频网站识别结果
 type VideoSite struct {
-	Name     string   `json:"name"`      // 网站名称
-	Domain   string   `json:"domain"`    // 主域名
-	Aliases  []string `json:"aliases"`   // 别名域名
-	Title    string   `json:"title"`     // 从链接提取的影视名
-	Episode  string   `json:"episode"`   // 集数
-	Original string   `json:"original"`  // 原始链接
+	Name     string   `json:"name"`
+	Domain   string   `json:"domain"`
+	Aliases  []string `json:"aliases"`
+	Title    string   `json:"title"`
+	Episode  string   `json:"episode"`
+	Original string   `json:"original"`
 }
 
 // ResourceSite 资源站配置
 type ResourceSite struct {
-	Name      string `yaml:"name"`                // 资源站名称
-	Type      string `yaml:"type"`                // 类型: html / applecms
-	URL       string `yaml:"url"`                 // 搜索 URL，{keyword} 为关键字占位符
-	DetailURL string `yaml:"detail_url"`          // 详情 URL（applecms 类型用 {id} 占位符）
-	Encode    string `yaml:"encode"`              // 编码方式: url / gb2312 / utf8
-	Selector  string `yaml:"selector"`            // html 类型: goquery 选择器
-	TitleAttr string `yaml:"title_attr"`          // html 类型: 标题属性
-	LinkAttr  string `yaml:"link_attr"`           // html 类型: 链接属性
-	Enabled   bool   `yaml:"enabled"`             // 是否启用
+	ID        string `yaml:"id"`                   // 唯一 ID（后台管理用）
+	Name      string `yaml:"name"`
+	Type      string `yaml:"type"`                 // applecms / html
+	URL       string `yaml:"url"`                  // 搜索 URL，{keyword} 占位符
+	DetailURL string `yaml:"detail_url"`           // 详情 URL，{id} 占位符
+	Encode    string `yaml:"encode"`
+	Selector  string `yaml:"selector"`
+	TitleAttr string `yaml:"title_attr"`
+	LinkAttr  string `yaml:"link_attr"`
+	CID       string `yaml:"cid"`                  // 苹果CMS分类ID映射（逗号分隔）
+	Enabled   bool   `yaml:"enabled"`
+}
+
+// SiteMapping 官方视频站 → 资源站 映射
+type SiteMapping struct {
+	Official string   `yaml:"official"` // 官方站点中文名
+	Sites    []string `yaml:"sites"`    // 优先使用的资源站 ID 列表
 }
 
 // SearchResult 资源站搜索结果
 type SearchResult struct {
-	Title        string `json:"title"`
-	URL          string `json:"url"`             // 详情页 URL 或播放地址
-	Site         string `json:"site"`
-	ResourceID   string `json:"resource_id,omitempty"`
-	Type         string `json:"type,omitempty"`         // 影片类型（国产剧/动作片...）
-	Remark       string `json:"remark,omitempty"`       // 更新备注（已完结/更新至第XX集）
-	PlayFrom     string `json:"play_from,omitempty"`    // 播放源
-	PlayURL      string `json:"play_url,omitempty"`     // 原始播放列表字符串
-	Matched      bool   `json:"matched,omitempty"`      // 是否精确匹配
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	Site       string `json:"site"`
+	ResourceID string `json:"resource_id"`
+	Type       string `json:"type"`
+	Remark     string `json:"remark"`
+	PlayFrom   string `json:"play_from"`
+	PlayURL    string `json:"play_url"`
+	Matched    bool   `json:"matched"`
 }
 
 // EpisodePlay 单集播放信息
@@ -50,58 +80,40 @@ type EpisodePlay struct {
 	URL     string `json:"url"`
 }
 
-// CleanResult 清洗后的最终结果
-type CleanResult struct {
-	Original    string        `json:"original"`
-	Title       string        `json:"title"`
-	Episode     string        `json:"episode"`
-	Site        string        `json:"site"`
-	Replacement string        `json:"replacement"`
-	Results     []SearchResult `json:"results"`
-	BestMatch   *SearchResult  `json:"best_match,omitempty"`
-	Episodes    []EpisodePlay  `json:"episodes,omitempty"` // 最佳匹配的全集播放列表
-}
-
-// AppConfig 应用配置
+// AppConfig 主配置
 type AppConfig struct {
 	Server   ServerConfig   `yaml:"server"`
 	Updater  UpdaterConfig  `yaml:"updater"`
 	Security SecurityConfig `yaml:"security"`
 }
 
-// ServerConfig 服务器配置
 type ServerConfig struct {
 	Port         int    `yaml:"port"`
 	Mode         string `yaml:"mode"`
 	NotFoundHTML string `yaml:"not_found_html"`
 }
 
-// UpdaterConfig 自动更新配置
 type UpdaterConfig struct {
 	Enabled  bool     `yaml:"enabled"`
 	Interval string   `yaml:"interval"`
 	Branch   string   `yaml:"branch"`
 	RepoURL  string   `yaml:"repo_url"`
 	Mirrors  []string `yaml:"mirrors"`
-	UseProxy bool     `yaml:"use_proxy"`
 }
 
-// SecurityConfig 安全配置
 type SecurityConfig struct {
 	APIKey string `yaml:"api_key"`
 }
 
-// ======== 苹果CMS 接口专用结构 ========
+// ======== 苹果CMS 接口专用 ========
 
-// AcmsListResponse 苹果CMS列表接口返回
 type AcmsListResponse struct {
-	Code  int       `json:"code"`
-	Msg   string    `json:"msg"`
-	Total int       `json:"total"`
-	List  []AcmsVideo `json:"list"`
+	Code  int          `json:"code"`
+	Msg   string       `json:"msg"`
+	Total int          `json:"total"`
+	List  []AcmsVideo  `json:"list"`
 }
 
-// AcmsVideo 苹果CMS视频条目
 type AcmsVideo struct {
 	VodID       int    `json:"vod_id"`
 	VodName     string `json:"vod_name"`
@@ -113,4 +125,46 @@ type AcmsVideo struct {
 	VodPlayURL  string `json:"vod_play_url"`
 	VodArea     string `json:"vod_area"`
 	VodYear     string `json:"vod_year"`
+}
+
+// CIDMapResponse 苹果CMS分类接口返回
+type CIDMapResponse struct {
+	List []struct {
+		ID   int    `json:"type_id"`
+		Name string `json:"type_name"`
+	} `json:"list"`
+}
+
+// ======== 后台管理请求 ========
+
+// AutoAnalyzeCMSRequest 自动分析苹果CMS接口请求
+type AutoAnalyzeCMSRequest struct {
+	URL  string `json:"url" binding:"required"`
+	Name string `json:"name"`
+}
+
+// AddSiteRequest 添加资源站请求
+type AddSiteRequest struct {
+	Name      string `json:"name" binding:"required"`
+	Type      string `json:"type"`
+	URL       string `json:"url" binding:"required"`
+	DetailURL string `json:"detail_url"`
+	Encode    string `json:"encode"`
+	CID       string `json:"cid"`
+	Enabled   *bool  `json:"enabled"`
+}
+
+// UpdateSiteRequest 更新资源站请求
+type UpdateSiteRequest struct {
+	Name      *string `json:"name"`
+	URL       *string `json:"url"`
+	DetailURL *string `json:"detail_url"`
+	CID       *string `json:"cid"`
+	Enabled   *bool   `json:"enabled"`
+}
+
+// UpdateMappingRequest 更新官方站→资源站映射
+type UpdateMappingRequest struct {
+	Site   string   `json:"site" binding:"required"`
+	Sites []string `json:"sites" binding:"required"`
 }

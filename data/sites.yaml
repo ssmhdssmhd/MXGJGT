@@ -1,22 +1,13 @@
 # ========================
-# 资源站列表
-# type: applecms = 苹果CMS采集接口（推荐）
-# type: html     = 普通 HTML 页面
+# 资源站列表 — 自动探测 / 苹果CMS 采集
+# 每个资源站有唯一 ID，后台管理 CRUD 用
 # ========================
 
-- name: "吉吉资源 M3U8"
+- id: "jjm3u8"
+  name: "吉吉资源 M3U8"
   type: applecms
   url: "http://caiji.jjzyapi.com/api.php/provide/vod/?ac=list&wd={keyword}"
   detail_url: "http://caiji.jjzyapi.com/api.php/provide/vod/?ac=detail&ids={id}"
   encode: "utf8"
+  cid: ""
   enabled: true
-
-# ======== 以下为 HTML 类型示例（可自行调整选择器启用）========
-# - name: "示例HTML资源站"
-#   type: html
-#   url: "https://example.com/search?kw={keyword}"
-#   encode: "utf8"
-#   selector: ".result-item"
-#   title_attr: ".title"
-#   link_attr: "a@href"
-#   enabled: false

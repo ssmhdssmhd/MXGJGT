@@ -2,7 +2,6 @@
 package service
 
 import (
-	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -268,16 +267,4 @@ func isIDLike(s string) bool {
 }
 
 // BuildCleanMessage 生成人类可读的修复消息（便于前端展示）
-func BuildCleanMessage(r *model.CleanResult) string {
-	if r == nil {
-		return ""
-	}
-	msg := fmt.Sprintf("[%s] %s", r.Site, r.Title)
-	if r.Episode != "" {
-		msg += fmt.Sprintf(" 第%s集", r.Episode)
-	}
-	if r.Replacement != "" {
-		msg += " → " + r.Replacement
-	}
-	return msg
-}
+

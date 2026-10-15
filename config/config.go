@@ -1,6 +1,9 @@
+// Package config 配置管理
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"sync"
@@ -13,96 +16,132 @@ import (
 var (
 	appConfig *model.AppConfig
 	sites     []model.ResourceSite
+	mappings  []model.SiteMapping
+	dataDir   string
 	mu        sync.RWMutex
 )
 
-// GetConfig 获取应用配置
+// InitDataDir 初始化数据目录
+func InitDataDir(dir string) { dataDir = dir }
+
 func GetConfig() *model.AppConfig {
-	mu.RLock()
-	defer mu.RUnlock()
+	mu.RLock(); defer mu.RUnlock()
 	return appConfig
 }
 
-// GetSites 获取资源站列表
 func GetSites() []model.ResourceSite {
-	mu.RLock()
-	defer mu.RUnlock()
+	mu.RLock(); defer mu.RUnlock()
 	return sites
 }
 
-// LoadConfig 从指定目录加载配置
-func LoadConfig(dataDir string) error {
+func GetMappings() []model.SiteMapping {
+	mu.RLock(); defer mu.RUnlock()
+	return mappings
+}
+
+func LoadConfig(dir string) error {
 	mu.Lock()
 	defer mu.Unlock()
+	dataDir = dir
 
-	// 加载 config.yaml
-	cfgPath := filepath.Join(dataDir, "config.yaml")
-	data, err := os.ReadFile(cfgPath)
-	if err != nil {
-		appConfig = defaultConfig()
-		return nil
-	}
-
-	var cfg model.AppConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return err
-	}
-	applyDefaults(&cfg)
-	appConfig = &cfg
-
-	// 加载资源站
-	sitesPath := filepath.Join(dataDir, "sites.yaml")
-	sitesData, err := os.ReadFile(sitesPath)
-	if err == nil {
-		var loadedSites []model.ResourceSite
-		if yaml.Unmarshal(sitesData, &loadedSites) == nil {
-			sites = loadedSites
+	// config.yaml
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if data, err := os.ReadFile(cfgPath); err == nil {
+		var c model.AppConfig
+		if yaml.Unmarshal(data, &c) == nil {
+			appConfig = &c
+			applyDefaults(appConfig)
 		}
 	}
+	if appConfig == nil {
+		appConfig = defaultConfig()
+	}
+
+	// sites.yaml
+	sitesPath := filepath.Join(dir, "sites.yaml")
+	if data, err := os.ReadFile(sitesPath); err == nil {
+		var loaded []model.ResourceSite
+		if yaml.Unmarshal(data, &loaded) == nil {
+			for i := range loaded {
+				if loaded[i].ID == "" {
+					loaded[i].ID = randomID()
+				}
+			}
+			sites = loaded
+		}
+	}
+
+	// mappings.yaml
+	mapPath := filepath.Join(dir, "mappings.yaml")
+	if data, err := os.ReadFile(mapPath); err == nil {
+		var m []model.SiteMapping
+		if yaml.Unmarshal(data, &m) == nil {
+			mappings = m
+		}
+	}
+	if mappings == nil {
+		mappings = defaultMappings()
+	}
+
 	return nil
 }
 
-// Reload 热重载配置
-func Reload(dataDir string) error {
-	return LoadConfig(dataDir)
+// Reload 重新从磁盘加载
+func Reload() error { return LoadConfig(dataDir) }
+
+// SaveSites 保存资源站到文件
+func SaveSites(newSites []model.ResourceSite) error {
+	mu.Lock()
+	defer mu.Unlock()
+	sites = newSites
+	data, err := yaml.Marshal(sites)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "sites.yaml"), data, 0644)
+}
+
+// SaveMappings 保存映射到文件
+func SaveMappings(newMaps []model.SiteMapping) error {
+	mu.Lock()
+	defer mu.Unlock()
+	mappings = newMaps
+	data, err := yaml.Marshal(mappings)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "mappings.yaml"), data, 0644)
+}
+
+func applyDefaults(cfg *model.AppConfig) {
+	if cfg.Server.Port == 0 { cfg.Server.Port = 8080 }
+	if cfg.Server.Mode == "" { cfg.Server.Mode = "release" }
+	if cfg.Updater.Interval == "" { cfg.Updater.Interval = "0 0 3 * * *" }
+	if cfg.Updater.Branch == "" { cfg.Updater.Branch = "main" }
 }
 
 func defaultConfig() *model.AppConfig {
 	return &model.AppConfig{
-		Server: model.ServerConfig{
-			Port:         8080,
-			Mode:         "release",
-			NotFoundHTML: "",
-		},
-		Updater: model.UpdaterConfig{
-			Enabled:  false,
-			Interval: "0 0 3 * * *",
-			Branch:   "main",
-			RepoURL:  "https://github.com/example/mxgjgt.git",
-			Mirrors: []string{
-				"https://ghproxy.com/{origin}",
-				"https://mirror.ghproxy.com/{origin}",
-				"https://gh-proxy.com/{origin}",
-			},
-			UseProxy: true,
-		},
-		Security: model.SecurityConfig{
-			APIKey: "",
-		},
+		Server:   model.ServerConfig{Port: 8080, Mode: "release"},
+		Updater:  model.UpdaterConfig{Enabled: false, Interval: "0 0 3 * * *", Branch: "main"},
+		Security: model.SecurityConfig{},
 	}
 }
 
-func applyDefaults(cfg *model.AppConfig) {
-	if cfg.Server.Port == 0 {
-		cfg.Server.Port = 8080
+func defaultMappings() []model.SiteMapping {
+	return []model.SiteMapping{
+		{Official: "腾讯视频", Sites: []string{"jjm3u8"}},
+		{Official: "爱奇艺",   Sites: []string{"jjm3u8"}},
+		{Official: "优酷",     Sites: []string{"jjm3u8"}},
+		{Official: "芒果TV",   Sites: []string{"jjm3u8"}},
+		{Official: "搜狐视频", Sites: []string{"jjm3u8"}},
+		{Official: "乐视视频", Sites: []string{"jjm3u8"}},
+		{Official: "哔哩哔哩", Sites: []string{"jjm3u8"}},
 	}
-	if cfg.Server.Mode == "" {
-		cfg.Server.Mode = "release"
-	}
-	if cfg.Updater.Interval == "" {
-		cfg.Updater.Interval = "0 0 3 * * *"
-	}
-	if cfg.Updater.Branch == "" {
-		cfg.Updater.Branch = "main"
-	}
+}
+
+func randomID() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
