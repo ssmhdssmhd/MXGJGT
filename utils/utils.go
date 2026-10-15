@@ -11,11 +11,12 @@ import (
 
 // HTTPClient 带超时的 http 客户端
 var HTTPClient = &http.Client{
-	Timeout: 15 * time.Second,
+	Timeout: 5 * time.Second,
 	Transport: &http.Transport{
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   true,
 	},
 }
 
