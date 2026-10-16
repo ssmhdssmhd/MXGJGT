@@ -3,6 +3,7 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -41,7 +42,7 @@ func RegisterRoutes(r *gin.Engine) {
 
 // ========= 核心清洗接口 =========
 
-// handleClean GET /api/clean/?url=
+// handleClean GET /api/clean/?url=[&wd=剧名&episode=第X集]
 func handleClean(c *gin.Context) {
 	targetURL := strings.TrimSpace(c.Query("url"))
 	if targetURL == "" {
@@ -49,14 +50,36 @@ func handleClean(c *gin.Context) {
 		return
 	}
 
+	userWD := strings.TrimSpace(c.Query("wd"))
+	userEp := strings.TrimSpace(c.Query("episode"))
+
+	// 如果用户传了 wd，注入到原始 URL query 里让 ParseOfficial 直接用
+	if userWD != "" {
+		if u, err := url.Parse(targetURL); err == nil {
+			q := u.Query()
+			q.Set("wd", userWD)
+			u.RawQuery = q.Encode()
+			targetURL = u.String()
+		}
+	}
+
 	offSite, err := service.ParseOfficial(targetURL)
-	if err != nil || offSite == nil {
+	if err != nil {
+		c.JSON(200, model.Fail(400, err.Error()))
+		return
+	}
+	if offSite == nil {
 		c.JSON(200, model.Fail(400, "无法识别的链接格式"))
 		return
 	}
 
-	jim, jj, url, best := resolvePlay(offSite.Title, offSite.Episode, offSite.Name)
-	resp := model.OK(jim, jj, url)
+	// 用户手动 episode 优先
+	if userEp != "" {
+		offSite.Episode = userEp
+	}
+
+	jim, jj, u, best := resolvePlay(offSite.Title, offSite.Episode, offSite.Name)
+	resp := model.OK(jim, jj, u)
 	resp.Time = time.Now().Format("2006-01-02 15:04:05")
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {

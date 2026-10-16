@@ -2,6 +2,7 @@
 package service
 
 import (
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -12,7 +13,14 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// 七大视频平台域名映射
+// officialSiteBlacklist HTML 反爬标题黑名单 —— 命中就丢弃
+var titleBlacklist = []string{
+	"腾讯视频", "爱奇艺", "优酷", "芒果TV", "搜狐视频", "B站", "哔哩哔哩",
+	"矩形备份", "热搜榜", "那条视频不见了", "页面不存在", "404",
+	"首页", "登录", "注册", "下载客户端",
+}
+
+// episodePatterns 集数正则
 var officialSites = []model.VideoSite{
 	{
 		Name:    "腾讯视频",
@@ -87,6 +95,12 @@ func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 	host := parsed.Host
 	path := parsed.Path
 
+	// 用户手动覆盖（最高优先级）
+	userWD := parsed.Query().Get("wd")
+	if userWD == "" {
+		userWD = parsed.Query().Get("keyword")
+	}
+
 	// 匹配官方网站
 	for _, site := range officialSites {
 		for _, alias := range site.Aliases {
@@ -98,17 +112,29 @@ func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 					Original: rawURL,
 				}
 
-				// 先尝试从 URL 提取
+				// 1. 用户手动 wd= 直接用（跳过一切自动解析）
+				if userWD != "" {
+					result.Title = cleanTitle(userWD)
+					result.Episode = extractEpisode(path, rawURL)
+					return result, nil
+				}
+
+				// 2. 先从 URL 路径提取
 				result.Title = extractTitleFromURL(parsed)
 				result.Episode = extractEpisode(path, rawURL)
 
-				// 然后请求官方页面，从 HTML meta 中获取真实标题
+				// 3. 抓 HTML 里的 meta 标题 —— 但很多官方站已反爬，需要质量判断
 				htmlTitle, htmlEpisode := fetchTitleFromPage(rawURL)
-				if htmlTitle != "" {
+				if isGoodTitle(htmlTitle) {
 					result.Title = htmlTitle
+					if htmlEpisode != "" {
+						result.Episode = htmlEpisode
+					}
 				}
-				if htmlEpisode != "" {
-					result.Episode = htmlEpisode
+
+				// 4. 如果啥都没拿到，返回 error 让用户传 wd=
+				if result.Title == "" || isSuspiciousTitle(result.Title) {
+					return result, fmt.Errorf("无法从该链接自动提取剧名，请附加参数 ?wd=剧名 例如 /api/clean/?wd=庆余年&url=%s", rawURL)
 				}
 
 				return result, nil
@@ -120,9 +146,13 @@ func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 	episode := extractEpisode(path, rawURL)
 	title := extractTitleFromURL(parsed)
 
-	// 通用：也尝试抓取页面标题
-	if title == "" {
-		if hTitle, hEp := fetchTitleFromPage(rawURL); hTitle != "" {
+	if userWD != "" {
+		title = cleanTitle(userWD)
+	}
+
+	// 通用：也尝试抓取页面标题（也需要质量判断）
+	if title == "" || isSuspiciousTitle(title) {
+		if hTitle, hEp := fetchTitleFromPage(rawURL); isGoodTitle(hTitle) {
 			title = hTitle
 			if episode == "" {
 				episode = hEp
@@ -137,6 +167,74 @@ func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 		Title:    title,
 		Episode:  episode,
 	}, nil
+}
+
+// isGoodTitle 判断 HTML 抓回来的标题质量
+// 规则：非空 + 有意义（长度 ≥ 2 且不含黑名单词）
+func isGoodTitle(t string) bool {
+	t = strings.TrimSpace(t)
+	if t == "" || len(t) < 2 {
+		return false
+	}
+	if isSuspiciousTitle(t) {
+		return false
+	}
+	return true
+}
+
+// isSuspiciousTitle 判断标题是否像反爬垃圾
+func isSuspiciousTitle(t string) bool {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return true
+	}
+
+	// 1. 黑名单关键词命中
+	for _, kw := range titleBlacklist {
+		if t == kw {
+			return true
+		}
+		if strings.Contains(t, "腾讯视频") && strings.Contains(t, "矩形备份") {
+			return true
+		}
+		if strings.Contains(t, "矩形备份") || strings.Contains(t, "热搜榜") {
+			return true
+		}
+	}
+
+	// 2. 全是英文/数字/下划线的短串 —— 大概率是 URL segment (vid / cover_id / hash)
+	if isAllASCII(t) && len(t) < 20 {
+		return true
+	}
+
+	// 3. 全小写 + 无空格 + 含数字 —— 也像 vid
+	if isAllLower(t) && !strings.Contains(t, " ") && hasDigit(t) && len(t) < 25 {
+		return true
+	}
+
+	return false
+}
+
+func isAllASCII(s string) bool {
+	for _, c := range s {
+		if c > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+func isAllLower(s string) bool {
+	return strings.ToLower(s) == s
+}
+
+func hasDigit(s string) bool {
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 // extractTitleFromURL 从 URL 中初步提取标题
