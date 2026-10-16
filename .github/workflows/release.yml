@@ -1,0 +1,130 @@
+# ============================================================
+#  MXGJGT — GitHub Actions 云端编译 + 自动发 Release
+#
+#  触发方式:
+#    1. 推送 tag:   git tag v0.0.4 && git push origin v0.0.4
+#    2. 手动触发:   GitHub → Actions → Release → Run workflow
+#
+#  产物会自动作为 Assets 挂在 GitHub Release 下，
+#  updater.go 会自动识别当前 GOOS/GOARCH 并下载对应 zip
+# ============================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本号 (例如 v0.0.4)，留空则取 tag 或手动输入'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64, ext: ''   }
+          - { goos: linux,   goarch: arm64, ext: ''   }
+          - { goos: windows, goarch: amd64, ext: '.exe' }
+          - { goos: darwin,  goarch: amd64, ext: ''   }
+          - { goos: darwin,  goarch: arm64, ext: ''   }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: 构建
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -z "$VERSION" ] && VERSION="${{ github.event.inputs.tag }}"
+          [ -z "$VERSION" ] && VERSION="dev"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          LDFLAGS="-s -w -X mxgjgt/model.Version=${VERSION} -X mxgjgt/model.BuildTime=${BUILD_TIME}"
+
+          OUT="mxgjgt-${GOOS}-${GOARCH}${{ matrix.ext }}"
+          go build -ldflags "$LDFLAGS" -o "$OUT" .
+          ls -lh "$OUT"
+
+      - name: 打包 zip
+        run: |
+          NAME="mxgjgt-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          zip -q "$NAME.zip" "$NAME"
+          sha256sum "$NAME.zip" | awk '{print $1}' > "$NAME.zip.sha256"
+          ls -lh "$NAME.zip"
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mxgjgt-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            mxgjgt-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+            mxgjgt-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}.zip
+            mxgjgt-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}.zip.sha256
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载所有 artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: 整理 + 生成总 SHA256
+        run: |
+          cd dist
+          ls -lh
+          # 汇总所有 zip 的 SHA256
+          for f in *.zip; do
+            echo "$(cat "${f}.sha256")  $f" >> SHA256.txt
+          done
+          cat SHA256.txt
+          # 删掉中间 sha256 文件
+          rm *.sha256
+
+      - name: 创建 Release 并上传
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: MXGJGT ${{ github.ref_name }}
+          body: |
+            ## MXGJGT ${{ github.ref_name }}
+
+            | 平台 | 架构 | 下载 |
+            |------|------|------|
+            | Linux | amd64 | `mxgjgt-linux-amd64.zip` |
+            | Linux | arm64 | `mxgjgt-linux-arm64.zip` |
+            | Windows | amd64 | `mxgjgt-windows-amd64.exe.zip` |
+            | macOS (Intel) | amd64 | `mxgjgt-darwin-amd64.zip` |
+            | macOS (Apple Silicon) | arm64 | `mxgjgt-darwin-arm64.zip` |
+
+            **校验**: `SHA256.txt`
+            **部署**: 解压 → `chmod +x mxgjgt` → `./mxgjgt`
+            **首次启动**自动创建 `data/ cache/ logs/` 目录 + 默认配置模板。
+
+            ### 更新日志
+            - 见 [commit history](https://github.com/${{ github.repository }}/commits/main)
+          files: dist/*
+          fail_on_unmatched_files: true
