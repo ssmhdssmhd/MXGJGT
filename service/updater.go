@@ -1,19 +1,42 @@
+// Package service — 真·二进制热更新
+// 更新流程: 查 GitHub Releases 最新 tag → 下载对应平台/架构二进制 → 原子替换 → exec 自重启
 package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"mxgjgt/config"
+	"mxgjgt/model"
 
 	"github.com/robfig/cron/v3"
 )
 
-// StartAutoUpdater 启动自动更新 cron 任务
+// ===== GitHub Releases API =====
+
+type ghRelease struct {
+	TagName string      `json:"tag_name"`
+	Name    string      `json:"name"`
+	Assets  []ghAsset   `json:"assets"`
+	Body    string      `json:"body"`
+}
+
+type ghAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+	Size               int64  `json:"size"`
+}
+
+// StartAutoUpdater 启动自动更新 cron
 func StartAutoUpdater() (*cron.Cron, error) {
 	cfg := config.GetConfig()
 	if cfg == nil || !cfg.Updater.Enabled {
@@ -22,7 +45,10 @@ func StartAutoUpdater() (*cron.Cron, error) {
 
 	c := cron.New()
 	_, err := c.AddFunc(cfg.Updater.Interval, func() {
-		doUpdate()
+		logUpdate("开始自动更新检查...")
+		if err := DoUpdate(); err != nil {
+			logUpdate("更新失败: %v", err)
+		}
 	})
 	if err != nil {
 		return nil, err
@@ -31,109 +57,291 @@ func StartAutoUpdater() (*cron.Cron, error) {
 	return c, nil
 }
 
-// doUpdate 执行一次更新
-func doUpdate() {
-	cfg := config.GetConfig()
-	if cfg == nil {
-		return
+// ManualUpdate 手动触发更新（供 API 调用）
+func ManualUpdate() string {
+	start := time.Now()
+	if err := DoUpdate(); err != nil {
+		return fmt.Sprintf("更新失败: %v", err)
 	}
-
-	fmt.Println("[Updater] 开始自动更新检查...")
-
-	// 1. 先测速挑选最优镜像
-	bestMirror := pickBestMirror(cfg.Updater.RepoURL, cfg.Updater.Mirrors)
-	repoURL := cfg.Updater.RepoURL
-	if bestMirror != "" {
-		repoURL = bestMirror
-	}
-
-	// 2. git pull 更新
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "git", "pull", repoURL, cfg.Updater.Branch)
-	cmd.Dir, _ = os.Getwd()
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("[Updater] git pull 失败: %v, 输出: %s\n", err, string(out))
-		return
-	}
-	fmt.Printf("[Updater] 更新成功: %s\n", strings.TrimSpace(string(out)))
-
-	// 3. 重新编译（如果是二进制部署）
-	if binaryPath := os.Args[0]; binaryPath != "" {
-		goBuild(ctx)
-		fmt.Println("[Updater] 编译完成，等待下次自动重启...")
-	}
+	return fmt.Sprintf("更新完成，耗时 %v，正在重启...", time.Since(start))
 }
 
-// pickBestMirror 测速挑选最快的镜像
-func pickBestMirror(origin string, mirrors []string) string {
-	if len(mirrors) == 0 {
-		return ""
+// DoUpdate 执行一次完整更新
+func DoUpdate() error {
+	cfg := config.GetConfig()
+	if cfg == nil {
+		return fmt.Errorf("配置为空")
 	}
 
-	type result struct {
-		url    string
-		delay  time.Duration
-		ok     bool
+	repo := extractRepo(cfg.Updater.RepoURL)
+	if repo == "" {
+		return fmt.Errorf("无法从 repo_url 提取 owner/repo")
 	}
 
-	ch := make(chan result, len(mirrors))
-	for _, m := range mirrors {
-		mirrorURL := strings.ReplaceAll(m, "{origin}", origin)
-		go func(u string) {
-			start := time.Now()
-			cmd := exec.Command("git", "ls-remote", "--exit-code", u)
-			cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-			err := cmd.Run()
-			ch <- result{url: u, delay: time.Since(start), ok: err == nil}
-		}(mirrorURL)
+	logUpdate("检查更新: %s (当前 v%s)", repo, model.Version)
+
+	// 1. 获取最新 release
+	latest, err := fetchLatestRelease(repo)
+	if err != nil {
+		return err
+	}
+	logUpdate("最新版本: %s", latest.TagName)
+
+	tag := strings.TrimPrefix(latest.TagName, "v")
+	if tag == model.Version {
+		logUpdate("已是最新版本 v%s，无需更新", model.Version)
+		return nil
 	}
 
-	var best result
-	best.delay = time.Hour * 24
-	timeout := time.After(10 * time.Second)
+	// 2. 找匹配当前平台/架构的 asset
+	asset := pickAsset(latest.Assets, runtime.GOOS, runtime.GOARCH)
+	if asset == nil {
+		return fmt.Errorf("未找到 %s/%s 对应的发布包", runtime.GOOS, runtime.GOARCH)
+	}
 
-	for i := 0; i < len(mirrors); i++ {
-		select {
-		case r := <-ch:
-			if r.ok && r.delay < best.delay {
-				best = r
-			}
-		case <-timeout:
-			if best.url != "" {
-				return best.url
-			}
-			return ""
+	downloadURL := asset.BrowserDownloadURL
+	// 应用镜像
+	if len(cfg.Updater.Mirrors) > 0 {
+		if m := pickMirror(cfg.Updater.Mirrors, downloadURL); m != "" {
+			downloadURL = m
+			logUpdate("使用镜像: %s", m)
 		}
 	}
 
-	if best.ok {
-		return best.url
+	// 3. 下载到临时文件
+	tmpPath, err := downloadToTemp(downloadURL, asset.Size)
+	if err != nil {
+		return fmt.Errorf("下载失败: %v", err)
+	}
+	logUpdate("下载完成 -> %s (%.1f MB)", tmpPath, float64(asset.Size)/1024/1024)
+
+	// 4. 原子替换
+	newExe, err := replaceBinary(tmpPath)
+	if err != nil {
+		return fmt.Errorf("替换失败: %v", err)
+	}
+
+	// 5. 自重启
+	logUpdate("准备重启 -> %s", newExe)
+	go func() {
+		time.Sleep(1 * time.Second)
+		execSelf(newExe)
+	}()
+
+	return nil
+}
+
+// ===== 内部函数 =====
+
+func extractRepo(url string) string {
+	// 支持 https://github.com/owner/repo 或带 .git 后缀
+	url = strings.TrimSuffix(url, ".git")
+	if idx := strings.Index(url, "github.com/"); idx >= 0 {
+		rest := url[idx+len("github.com/"):]
+		if parts := strings.SplitN(rest, "/", 2); len(parts) == 2 {
+			return parts[0] + "/" + parts[1]
+		}
 	}
 	return ""
 }
 
-// goBuild 重新编译
-func goBuild(ctx context.Context) {
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", "mxgjgt", ".")
-	cmd.Dir, _ = os.Getwd()
-	cmd.Env = append(os.Environ(),
-		"GOPROXY=https://goproxy.cn,direct",
-	)
-	out, err := cmd.CombinedOutput()
+func fetchLatestRelease(repo string) (*ghRelease, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "mxgjgt-updater")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Printf("[Updater] go build 失败: %v, 输出: %s\n", err, string(out))
+		return nil, err
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		return nil, fmt.Errorf("仓库或 release 不存在 (404)")
+	}
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(b))
+	}
+
+	var r ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
-// ManualUpdate 手动触发更新
-func ManualUpdate() string {
-	before := time.Now()
-	doUpdate()
-	return fmt.Sprintf("更新完成，耗时: %v", time.Since(before))
+// pickAsset 根据 GOOS/GOARCH 找 asset
+// 支持命名如: mxgjgt-linux-amd64, mxgjgt-linux-amd64.tar.gz, mxgjgt-windows-amd64.exe.zip
+func pickAsset(assets []ghAsset, goos, goarch string) *ghAsset {
+	var osTag, archTag, ext string
+	switch goos {
+	case "linux":
+		osTag = "linux"
+		ext = ""
+	case "windows":
+		osTag = "windows"
+		ext = ".exe"
+	case "darwin":
+		osTag = "darwin"
+	}
+	switch goarch {
+	case "amd64":
+		archTag = "amd64"
+	case "arm64":
+		archTag = "arm64"
+	case "arm":
+		archTag = "arm"
+	}
+
+	// 优先精确匹配
+	for i := range assets {
+		name := strings.ToLower(assets[i].Name)
+		if strings.Contains(name, osTag) && strings.Contains(name, archTag) {
+			// 排除源码包 / 校验文件
+			if strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".tgz") {
+				return &assets[i]
+			}
+			if ext != "" && strings.Contains(name, ext) {
+				return &assets[i]
+			}
+			// 无扩展名或 .exe 直接匹配
+			return &assets[i]
+		}
+	}
+
+	// 次优先：宽松匹配
+	for i := range assets {
+		name := strings.ToLower(assets[i].Name)
+		if strings.Contains(name, osTag) && strings.Contains(name, archTag) {
+			return &assets[i]
+		}
+	}
+	return nil
+}
+
+func pickMirror(mirrors []string, originURL string) string {
+	for _, m := range mirrors {
+		if strings.Contains(m, "{origin}") {
+			return strings.ReplaceAll(m, "{origin}", originURL)
+		}
+		// 直接代理前缀模式 https://ghproxy.com/https://github.com/xxx
+		if strings.HasSuffix(m, "/") {
+			return m + originURL
+		}
+	}
+	return ""
+}
+
+func downloadToTemp(url string, expectedSize int64) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("User-Agent", "mxgjgt-updater")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 && resp.StatusCode != 302 {
+		return "", fmt.Errorf("下载 %d", resp.StatusCode)
+	}
+
+	tmp, err := os.CreateTemp("", "mxgjgt-update-*")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+
+	written, err := io.Copy(tmp, resp.Body)
+	tmp.Close()
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", err
+	}
+	if expectedSize > 0 && written < expectedSize*80/100 {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("下载不完整 (%d/%d)", written, expectedSize)
+	}
+
+	return tmpPath, nil
+}
+
+func replaceBinary(tmpPath string) (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	self = filepath.Clean(self)
+
+	// 重命名旧版本为 .bak
+	bakPath := self + ".bak"
+	os.Remove(bakPath)
+	os.Rename(self, bakPath)
+
+	// 新文件重命名为正式位置
+	if err := os.Rename(tmpPath, self); err != nil {
+		// 原子移动失败（跨设备等），回退用 copy
+		in, _ := os.Open(tmpPath)
+		out, _ := os.Create(self)
+		io.Copy(out, in)
+		in.Close()
+		out.Close()
+		os.Remove(tmpPath)
+	}
+
+	// 设为可执行
+	if runtime.GOOS != "windows" {
+		os.Chmod(self, 0755)
+	}
+
+	return self, nil
+}
+
+func execSelf(path string) {
+	if runtime.GOOS == "windows" {
+		// Windows 用 ShellExecute 自重启
+		cmd := exec.Command(path)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Start()
+		os.Exit(0)
+		return
+	}
+	exec := exec.Command(path)
+	exec.Stdout = os.Stdout
+	exec.Stderr = os.Stderr
+	exec.Stdin = os.Stdin
+	exec.Env = os.Environ()
+	if err := exec.Start(); err != nil {
+		logUpdate("自重启失败: %v", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func logUpdate(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	fmt.Printf("[Updater] %s\n", msg)
+	appendLog(msg)
+}
+
+func appendLog(msg string) {
+	if config.LogsDir() == "" {
+		return
+	}
+	path := filepath.Join(config.LogsDir(), "update.log")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
 }
