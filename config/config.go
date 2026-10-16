@@ -151,7 +151,7 @@ func SaveMappings(newMaps []model.SiteMapping) error {
 
 func applyDefaults(cfg *model.AppConfig) {
 	if cfg.Server.Port == 0 {
-		cfg.Server.Port = 8080
+		cfg.Server.Port = 9991
 	}
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "release"
@@ -166,7 +166,7 @@ func applyDefaults(cfg *model.AppConfig) {
 
 func defaultConfig() *model.AppConfig {
 	return &model.AppConfig{
-		Server:   model.ServerConfig{Port: 8080, Mode: "release"},
+		Server:   model.ServerConfig{Port: 9991, Mode: "release"},
 		Updater:  model.UpdaterConfig{Enabled: false, Interval: "0 0 3 * * *", Branch: "main"},
 		Security: model.SecurityConfig{},
 	}
@@ -199,7 +199,7 @@ func defaultConfigYAML() string {
 # =============================================
 
 server:
-  port: 8080
+  port: 9991
   mode: release
   not_found_html: ""
 

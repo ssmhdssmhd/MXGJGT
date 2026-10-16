@@ -1,6 +1,6 @@
 # MXGJGT 主配置文件
 server:
-  port: 8080
+  port: 9991
   mode: release
   # 自定义伪装 404 HTML 文件路径（留空则用默认 JSON 伪装）
   not_found_html: ""
