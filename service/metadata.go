@@ -60,6 +60,49 @@ func extractBVID(u *url.URL) string {
 	return ""
 }
 
+// ========== 腾讯视频 ==========
+
+// TencentInfo 腾讯视频 cover 信息
+type TencentInfo struct {
+	Title string `json:"title"`
+	Year  string `json:"year"`
+}
+
+var tencentCIDRe = regexp.MustCompile(`/(?:cover|page)/([A-Za-z0-9]{8,})(?:\.html|/|$)`)
+
+// extractTencentCID 从 v.qq.com 链接里提取 cover id
+func extractTencentCID(u *url.URL) string {
+	if m := tencentCIDRe.FindStringSubmatch(u.Path); len(m) >= 2 {
+		return m[1]
+	}
+	if m := tencentCIDRe.FindStringSubmatch(u.String()); len(m) >= 2 {
+		return m[1]
+	}
+	return ""
+}
+
+// FetchTencentInfo 调用腾讯公开接口按 cid 拉剧名
+func FetchTencentInfo(cid string) (*TencentInfo, error) {
+	target := "https://node.video.qq.com/x/api/float_vinfo2?cid=" + cid
+	body, err := utils.GetHTML(target, map[string]string{
+		"User-Agent": "Mozilla/5.0",
+		"Referer":    "https://v.qq.com/",
+	})
+	if err != nil {
+		return nil, err
+	}
+	var wrapper struct {
+		C TencentInfo `json:"c"`
+	}
+	if err := json.Unmarshal([]byte(body), &wrapper); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(wrapper.C.Title) == "" {
+		return nil, fmt.Errorf("tencent api empty title")
+	}
+	return &wrapper.C, nil
+}
+
 // ========== 豆瓣 ==========
 
 // DoubanSuggest 豆瓣搜索建议
@@ -139,6 +182,15 @@ func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 		if bvid := extractBVID(u); bvid != "" {
 			if info, err := FetchBilibiliInfo(bvid); err == nil && info.Title != "" {
 				return info.Title, "", "bilibili-api"
+			}
+		}
+	}
+
+	// 1.5 腾讯视频 — cover cid API
+	if strings.Contains(host, "v.qq.com") || strings.Contains(host, "film.qq.com") {
+		if cid := extractTencentCID(u); cid != "" {
+			if info, err := FetchTencentInfo(cid); err == nil && info.Title != "" {
+				return info.Title, "", "tencent-api"
 			}
 		}
 	}
