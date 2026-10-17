@@ -200,6 +200,13 @@ func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 		return htmlTitle, htmlEp, "html-meta"
 	}
 
+	// 2.5 方案1：无头浏览器渲染（覆盖爱奇艺/优酷/芒果等强反爬站）
+	if BrowserAvailable() {
+		if rt, re, err := RenderOfficialTitle(u.String()); err == nil && isGoodTitle(rt) {
+			return rt, re, "headless-render"
+		}
+	}
+
 	// 3. 从 URL path 里找所有可能的 segment，去豆瓣逐个搜
 	segments := extractChineseSegments(path)
 	for _, seg := range segments {

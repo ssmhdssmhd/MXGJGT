@@ -1,3 +1,61 @@
+MXGJGT v0.0.4 202610180433
+===========================
+
+## 官替功能上线 — 官方链接一键替换资源
+
+> 官替 = 官方视频站链接 → 解析剧名 + 集数 → 资源站匹配 → 输出替换后的播放地址。
+> 三层降级方案，优先方案1，方案2/3 保底。
+
+### ✅ 新增功能
+
+1. **方案1（主）无头浏览器渲染**
+   - 新增 `service/browser.go`：Chrome Headless Shell + chromedp v0.21.0 泛型 API
+   - 渲染官方页面 DOM，抓取 `document.title` / `og:title` / 页面文本
+   - `extractDramaName()` 从《剧名》模式 / 分隔符截断抽取剧名
+   - 覆盖爱奇艺 / 优酷 / 芒果 等对后端强反爬、纯 HTTP 拿不到真实标题的站点
+   - Chrome 探测：配置 → 环境变量 `MXGJGT_CHROME` → 常见路径 → `PATH`
+
+2. **方案2 客户端直接传参**
+   - `/api/clean/` 支持 `wd`(别名 `title`) + `episode`(别名 `jj`)
+   - 仅传 `wd` 时无需官方链接，直接走资源站替换
+   - 与 `url` 同传时，用户剧名优先采用
+
+3. **方案3 解析失败保底**
+   - 浏览器不可用 / 渲染失败时自动回退 HTTP 解析链
+   - 仍失败则提示补充 `wd` 参数
+
+4. **腾讯视频专用 API** — `service/metadata.go` 新增 `FetchTencentInfo`，走 `node.video.qq.com/x/api/float_vinfo2` 公开接口，无需浏览器
+
+### 🐛 修复 / 优化
+
+1. 标题质量校验加长度上限（30 字）+ 站点名黑名单，避免长描述被误判为剧名
+2. 集数仅从标题提取，不再从页面文本提取（避免"共39集"误判）
+3. Chrome 内核补齐系统依赖：libXcomposite / libatk 等 5 个库
+
+### 📋 实测（服务 http://127.0.0.1:9991）
+
+```
+方案1: https://www.iqiyi.com/a_1fkgtbddd2x.html  → 狂飙 → 替换地址 ✅
+方案2: /api/clean/?wd=狂飙&episode=第5集          → 替换地址 ✅
+方案3: 浏览器不可用 / 解析失败 → 自动回退 + 提示 ✅
+```
+
+### 📁 变更文件
+
+```
+modified: config/config.go     # 新增 browser 段默认配置 + 自动启用逻辑
+modified: handler/api.go       # 方案2：wd/title、episode/jj 别名传参
+modified: model/types.go       # 新增 BrowserConfig
+modified: model/version.go     # 0.0.3 → 0.0.4
+modified: service/metadata.go  # 腾讯视频 API + 无头渲染接入解析链
+modified: service/parser.go    # 标题质量校验加强 + 剧名抽取统一
+modified: Makefile             # VERSION 0.0.3 → 0.0.4
+new:      service/browser.go   # 方案1 无头浏览器渲染
+modified: README.md            # 官替三层方案 + browser 配置说明
+```
+
+---
+
 MXGJGT v0.0.2 202610152326
 ===========================
 

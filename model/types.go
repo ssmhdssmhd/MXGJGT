@@ -85,6 +85,7 @@ type AppConfig struct {
 	Server   ServerConfig   `yaml:"server"`
 	Updater  UpdaterConfig  `yaml:"updater"`
 	Security SecurityConfig `yaml:"security"`
+	Browser  BrowserConfig  `yaml:"browser"`
 }
 
 type ServerConfig struct {
@@ -103,6 +104,14 @@ type UpdaterConfig struct {
 
 type SecurityConfig struct {
 	APIKey string `yaml:"api_key"`
+}
+
+// BrowserConfig 无头浏览器渲染配置（方案1 主方案）
+// 从官方页面渲染抓取剧名+集数，覆盖爱奇艺/优酷等强反爬站
+type BrowserConfig struct {
+	Enabled    bool   `yaml:"enabled"`     // 总开关；未配置时默认启用
+	ChromePath string `yaml:"chrome_path"` // Chrome/Chromium 可执行文件路径，留空自动探测
+	TimeoutSec int    `yaml:"timeout_sec"` // 单次渲染超时秒数，默认 20
 }
 
 // ======== 苹果CMS 接口专用 ========

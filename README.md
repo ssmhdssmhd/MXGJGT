@@ -12,10 +12,33 @@
 | 🕶️ 伪装模式 | 根路径和任意未知路径返回 `404` 伪装 JSON 或 HTML 页面 |
 | 🔍 七大平台识别 | 腾讯视频、爱奇艺、优酷、芒果TV、搜狐视频、乐视视频、哔哩哔哩 |
 | 🎬 影视名 + 集数提取 | 支持从 URL 和官方页面 HTML meta 双重提取 |
-| 🔄 资源站替换 | 可配置多个资源站，自动从资源站搜索影视并返回替代链接 |
+| 🖥️ 官替（官方资源替换） | 官方链接 → 解析剧名+集数 → 资源站匹配 → 输出替换播放地址 |
+| 🔄 三层降级方案 | 方案1 无头浏览器渲染（主）→ 方案2 客户端传参 → 方案3 参数提示（保底） |
 | 🛠️ 自动更新 | Cron 定时 + 国内镜像测速 + git pull + go build |
 | ⚙️ 配置化 | YAML 配置文件，资源站列表独立配置 |
 | 🔐 API Key | 手动更新接口可选密钥保护 |
+
+---
+
+## 🎯 官替 · 三层降级方案
+
+官替 = 输入官方视频站链接 → 解析出 **剧名 + 集数** → 在资源站中匹配 → 输出 **替换后的播放地址**。三层降级，逐级保底：
+
+| 方案 | 名称 | 说明 |
+|---|---|---|
+| **方案1（主）** | 无头浏览器渲染 | Chrome Headless 渲染官方页面 DOM，抓取剧名/集数。覆盖爱奇艺 / 优酷 / 芒果等对后端强反爬、纯 HTTP 拿不到真实标题的站点 |
+| **方案2** | 客户端直接传参 | 调用方可直接传 `wd=剧名&episode=第X集`，完全跳过官方解析，直接走资源站替换 |
+| **方案3（保底）** | 解析失败提示 | 浏览器不可用 / 解析失败时自动回退到 HTTP 解析链（B站API → 腾讯API → HTML meta → 豆瓣兜底）；仍失败则提示补充 `wd` 参数 |
+
+> 无头浏览器为**可选项**：未探测到 Chrome/Chromium 或 `browser.enabled=false` 时，自动降级到方案2/3，无硬依赖。
+
+### 解析链顺序
+
+```
+B站专用 API → 腾讯视频 API → HTML meta 抓取 → 无头浏览器渲染（方案1）→ 豆瓣兜底搜索 → 参数提示（方案3）
+```
+
+---
 
 ## 🚀 快速开始
 
@@ -40,29 +63,41 @@ MXGJGT_DATA_DIR=./data ./mxgjgt
 
 ```bash
 # 伪装 404
-curl http://127.0.0.1:8080/
+curl http://127.0.0.1:9991/
 # => {"code":404,"msg":"页面未找到"}
 
 # 无 url 参数
-curl http://127.0.0.1:8080/api/clean/
+curl http://127.0.0.1:9991/api/clean/
 # => {"code":404,"msg":"无url参数"}
 
-# 真实 API - 清洗腾讯视频链接
-curl "http://127.0.0.1:8080/api/clean/?url=https%3A%2F%2Fv.qq.com%2Fx%2Fcover%2Fabc123.html"
+# 方案1 - 清洗官方链接（无头渲染抓剧名）
+curl "http://127.0.0.1:9991/api/clean/?url=https%3A%2F%2Fwww.iqiyi.com%2Fa_1fkgtbddd2x.html"
+
+# 方案2 - 客户端直接传参
+curl "http://127.0.0.1:9991/api/clean/?wd=%E7%8B%82%E9%A3%8B&episode=%E7%AC%AC5%E9%9B%9F"
 
 # 版本
-curl http://127.0.0.1:8080/api/version
+curl http://127.0.0.1:9991/api/version
 ```
+
+> 无头浏览器内核可通过环境变量指定：`MXGJGT_CHROME=/path/to/chrome-headless-shell ./mxgjgt`
 
 ---
 
 ## 📡 API 接口
 
-### `GET /api/clean/?url=<待清洗URL>`
+### `GET /api/clean/?url=<待清洗URL>[&wd=<剧名>&episode=<集数>]`
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `url` | 是 | 用户提交的官方视频平台链接 |
+| `url` | 否* | 官方视频平台链接（方案1/3 解析剧名+集数） |
+| `wd` / `title` | 否* | 剧名（方案2，客户端直接传参；与 `url` 同时传则优先采用） |
+| `episode` / `jj` | 否 | 集数，如 `第5集` / `05` |
+
+> \* `url` 与 `wd` 至少提供一个。仅传 `wd` 时走方案2，无需官方解析。
+>
+> - 方案1：`/api/clean/?url=https://www.iqiyi.com/a_xxx.html`（无头渲染抓剧名）
+> - 方案2：`/api/clean/?wd=狂飙&episode=第5集`（直接传参）
 
 **成功响应：**
 
@@ -110,6 +145,8 @@ MXGJGT/
 │   └── version.go
 ├── service/                # 业务逻辑
 │   ├── parser.go           # 官方网站识别 + 影视名/集数提取
+│   ├── metadata.go         # 第三方元数据 API（B站/腾讯/豆瓣）+ 解析链兜底
+│   ├── browser.go          # 方案1：无头浏览器渲染抓取剧名/集数
 │   ├── resource.go         # 资源站搜索
 │   └── updater.go          # 自动更新（镜像测速 + git pull）
 ├── config/
@@ -134,7 +171,7 @@ MXGJGT/
 
 ```yaml
 server:
-  port: 8080
+  port: 9991
   mode: release              # gin 模式: debug / release / test
   not_found_html: ""         # 自定义伪装 404 HTML 路径
 
@@ -149,7 +186,15 @@ updater:
 
 security:
   api_key: ""                # 设值后 /api/update 需鉴权
+
+# 无头浏览器渲染（方案1 主方案）
+browser:
+  enabled: true              # 总开关；未配置时默认启用
+  chrome_path: ""            # 留空自动探测，也可用环境变量 MXGJGT_CHROME 指定
+  timeout_sec: 20            # 单次渲染超时秒数
 ```
+
+> Chrome 探测顺序：`config.browser.chrome_path` → 环境变量 `MXGJGT_CHROME` → 常见安装路径 → `PATH`。找不到时自动降级到方案2/3。
 
 ### `data/sites.yaml`
 

@@ -162,6 +162,13 @@ func applyDefaults(cfg *model.AppConfig) {
 	if cfg.Updater.Branch == "" {
 		cfg.Updater.Branch = "main"
 	}
+	// 无头浏览器渲染（方案1）：未显式配置 browser 段时默认启用
+	if cfg.Browser.TimeoutSec == 0 {
+		cfg.Browser.TimeoutSec = 20
+	}
+	if !cfg.Browser.Enabled && cfg.Browser.ChromePath == "" {
+		cfg.Browser.Enabled = true
+	}
 }
 
 func defaultConfig() *model.AppConfig {
@@ -169,6 +176,7 @@ func defaultConfig() *model.AppConfig {
 		Server:   model.ServerConfig{Port: 9991, Mode: "release"},
 		Updater:  model.UpdaterConfig{Enabled: false, Interval: "0 0 3 * * *", Branch: "main"},
 		Security: model.SecurityConfig{},
+		Browser:  model.BrowserConfig{Enabled: true, TimeoutSec: 20},
 	}
 }
 
@@ -194,7 +202,7 @@ func randomID() string {
 
 func defaultConfigYAML() string {
 	return `# =============================================
-#  MXGJGT v0.0.2  — 主配置
+#  MXGJGT v0.0.4  — 主配置
 #  所有配置修改后调用 POST /api/admin/reload 热加载
 # =============================================
 
@@ -213,6 +221,14 @@ updater:
 
 security:
   api_key: ""
+
+# 无头浏览器渲染（方案1 主方案）
+# 从官方页面渲染抓取剧名+集数，覆盖爱奇艺/优酷/芒果等对后端强反爬的站点
+# 找不到 Chrome/Chromium 时，自动回退到方案2（客户端传参）/方案3（提示加 wd）
+browser:
+  enabled: true
+  chrome_path: ""   # 留空自动探测；也可用环境变量 MXGJGT_CHROME 指定
+  timeout_sec: 20
 `
 }
 

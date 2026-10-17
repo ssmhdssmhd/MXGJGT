@@ -45,16 +45,24 @@ func RegisterRoutes(r *gin.Engine) {
 // handleClean GET /api/clean/?url=[&wd=剧名&episode=第X集]
 func handleClean(c *gin.Context) {
 	targetURL := strings.TrimSpace(c.Query("url"))
-	if targetURL == "" {
+
+	// 方案2（保底）：客户端可直接传剧名+集数，跳过官方解析
+	userWD := strings.TrimSpace(c.Query("wd"))
+	if userWD == "" {
+		userWD = strings.TrimSpace(c.Query("title"))
+	}
+	userEp := strings.TrimSpace(c.Query("episode"))
+	if userEp == "" {
+		userEp = strings.TrimSpace(c.Query("jj"))
+	}
+
+	if targetURL == "" && userWD == "" {
 		c.JSON(200, model.Fail(404, "无url参数"))
 		return
 	}
 
-	userWD := strings.TrimSpace(c.Query("wd"))
-	userEp := strings.TrimSpace(c.Query("episode"))
-
-	// 如果用户传了 wd，注入到原始 URL query 里让 ParseOfficial 直接用
-	if userWD != "" {
+	// 有 URL：把用户剧名注入 query，让 ParseOfficial 识别来源站时直接采用
+	if targetURL != "" && userWD != "" {
 		if u, err := url.Parse(targetURL); err == nil {
 			q := u.Query()
 			q.Set("wd", userWD)
@@ -63,14 +71,21 @@ func handleClean(c *gin.Context) {
 		}
 	}
 
-	offSite, err := service.ParseOfficial(targetURL)
-	if err != nil {
-		c.JSON(200, model.Fail(400, err.Error()))
-		return
-	}
-	if offSite == nil {
-		c.JSON(200, model.Fail(400, "无法识别的链接格式"))
-		return
+	var offSite *model.VideoSite
+	if targetURL != "" {
+		site, err := service.ParseOfficial(targetURL)
+		if err != nil {
+			c.JSON(200, model.Fail(400, err.Error()))
+			return
+		}
+		if site == nil {
+			c.JSON(200, model.Fail(400, "无法识别的链接格式"))
+			return
+		}
+		offSite = site
+	} else {
+		// 无 URL：纯客户端传参（方案2）
+		offSite = &model.VideoSite{Name: "客户端传参", Original: targetURL, Title: userWD, Episode: userEp}
 	}
 
 	// 用户手动 episode 优先
@@ -160,12 +175,10 @@ func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *mod
 						break
 					}
 				}
-				// 没指定集数就取第 1 集
+				// 没匹配到指定集数就回退第 1 集
 				if url == "" && len(eps) > 0 {
 					url = eps[0].URL
-					if jj == "" {
-						jj = eps[0].Episode
-					}
+					jj = eps[0].Episode
 				}
 				break
 			}

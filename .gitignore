@@ -20,6 +20,9 @@ update.log
 .env
 .env.local
 
+# 无头浏览器内核（方案1，本地下载，不入库）
+.browser/
+
 dist/
 cache/
 logs/

@@ -189,6 +189,10 @@ func isGoodTitle(t string) bool {
 	if t == "" || len(t) < 2 {
 		return false
 	}
+	// 过长的文本是页面描述而非剧名（如爱奇艺 meta description）
+	if len([]rune(t)) > 30 {
+		return false
+	}
 	if isSuspiciousTitle(t) {
 		return false
 	}
@@ -231,6 +235,13 @@ func isSuspiciousTitle(t string) bool {
 	}
 	for _, p := range siteGarbagePatterns {
 		if strings.Contains(t, p) {
+			return true
+		}
+	}
+
+	// 1.6 纯站点名 / 站点名+视频（如 "爱奇艺视频"）不是剧名
+	for _, s := range []string{"爱奇艺", "腾讯视频", "优酷", "芒果TV", "搜狐视频", "乐视", "哔哩哔哩", "B站"} {
+		if t == s || t == s+"视频" || t == s+"网" || t == s+"网站" || t == s+"首页" {
 			return true
 		}
 	}
@@ -324,7 +335,7 @@ func fetchTitleFromPage(targetURL string) (title, episode string) {
 		return "", ""
 	}
 
-	title = cleanTitle(title)
+	title = cleanTitle(extractDramaName(title))
 
 	// 尝试从标题中提取集数
 	for _, pat := range episodePatterns {
