@@ -1,7 +1,7 @@
 # MXGJGT
 
 > **MXGJGT** 是一个基于 Go + Gin 开发的视频链接清洗 / 伪装后端服务。
-> 访问域名返回伪装 404 页面（`{"code":404,"msg":"页面未找到"}`），只有命中隐藏路由 `/api/clean/?url=` 才会进入真实 API，识别腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / B站 等官方链接，自动提取影视名 + 集数，并从配置的资源站列表中搜索替代链接返回。
+> 访问域名返回伪装 404 页面（`{"code":404,"msg":"页面未找到"}`），只有命中隐藏路由 `/api/clean/` 才会进入真实 API。输入腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / B站 等官方链接，自动解析影视名 + 集数（**官替**），并从配置的资源站中匹配、输出**替换后的播放地址**；解析失败时可传 `wd` / `episode` 直接指定剧名与集数。
 
 ---
 
@@ -104,26 +104,42 @@ curl http://127.0.0.1:9991/api/version
 ```json
 {
   "code": 200,
-  "msg": "success",
-  "data": {
-    "original":   "https://v.qq.com/x/cover/abc123.html",
-    "title":      "庆余年",
-    "episode":    "01",
-    "site":       "腾讯视频",
-    "replacement": "https://www.douban.com/subject/12345678/",
-    "results":    [
-      {"title": "庆余年 第一季", "url": "https://...", "site": "豆瓣电影"}
-    ]
-  }
+  "jm":   "狂飙",
+  "jj":   "第5集",
+  "url":  "https://svip.jijiplay1.com/watch/xxxx",
+  "msg":  "https://svip.jijiplay1.com/watch/xxxx",
+  "time": "2026-10-18 12:00:00",
+  "kfz":  "射手沫蝴蝶"
 }
 ```
+
+| 字段 | 说明 |
+|---|---|
+| `code` | `200` 成功 / `404` 未匹配到资源 / `400` 参数或解析错误 |
+| `jm` | 剧名 |
+| `jj` | 集数 |
+| `url` / `msg` | 替换后的播放地址 |
+| `time` | 响应时间 |
+| `kfz` | 制作方（射手沫蝴蝶） |
 
 **失败响应（伪装）：**
 
 ```json
 {"code": 404, "msg": "无url参数"}
+{"code": 404, "msg": "未在资源站中匹配到资源"}
 {"code": 400, "msg": "无法识别的链接格式"}
 ```
+
+### `GET /api/search/?wd=<剧名>[&episode=<集数>]`
+
+按剧名直接在资源站搜索并返回替换地址（无需官方链接）。
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `wd` | 是 | 剧名 |
+| `episode` | 否 | 集数，如 `第5集` / `05` |
+
+响应格式同 `/api/clean/`（成功返回 `jm` / `jj` / `url`）。
 
 ### `GET /api/version`
 
@@ -133,6 +149,19 @@ curl http://127.0.0.1:9991/api/version
 
 手动触发更新（需要在 `config.yaml` 的 `security.api_key` 设置后携带 `X-API-Key` 或 `?key=`）。
 
+### 后台管理 `/api/admin/*`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/admin/sites` | 列出全部资源站 |
+| POST | `/api/admin/site/auto` | 苹果CMS 接口自动分析（返回候选配置） |
+| POST | `/api/admin/site` | 新增资源站 |
+| PUT | `/api/admin/site/:id` | 更新资源站 |
+| DELETE | `/api/admin/site/:id` | 删除资源站 |
+| GET | `/api/admin/mappings` | 查看 官方站→资源站 映射 |
+| POST | `/api/admin/mapping` | 设置 官方站→资源站 映射 |
+| POST | `/api/admin/reload` | 热重载配置 |
+
 ---
 
 ## 📂 项目结构
@@ -140,26 +169,33 @@ curl http://127.0.0.1:9991/api/version
 ```
 MXGJGT/
 ├── main.go                 # 入口
-├── handler/                # HTTP 路由 + 版本
-│   ├── api.go
-│   └── version.go
+├── handler/                # HTTP 路由
+│   ├── api.go              # 核心接口（clean/search/version/update）
+│   ├── admin.go            # 后台管理（资源站 / 映射 CRUD）
+│   └── version.go          # 版本兼容导出
 ├── service/                # 业务逻辑
 │   ├── parser.go           # 官方网站识别 + 影视名/集数提取
 │   ├── metadata.go         # 第三方元数据 API（B站/腾讯/豆瓣）+ 解析链兜底
 │   ├── browser.go          # 方案1：无头浏览器渲染抓取剧名/集数
-│   ├── resource.go         # 资源站搜索
+│   ├── resource.go         # 资源站搜索 + 苹果CMS 采集
+│   ├── acms.go             # 苹果CMS 接口自动分析
+│   ├── cache.go            # 搜索结果缓存
 │   └── updater.go          # 自动更新（镜像测速 + git pull）
 ├── config/
-│   └── config.go           # 配置加载
+│   └── config.go           # 配置加载 / 热加载 / 持久化
 ├── model/
-│   └── types.go            # 数据结构
+│   ├── types.go            # 数据结构
+│   └── version.go          # 版本常量
 ├── utils/
 │   └── utils.go            # HTTP 工具
 ├── data/
 │   ├── config.yaml         # 主配置
-│   └── sites.yaml          # 资源站列表
+│   ├── sites.yaml          # 资源站列表
+│   └── mappings.yaml       # 官方站→资源站映射
 ├── static/
 │   └── 404.html            # 可选的伪装 HTML 页面
+├── .github/workflows/
+│   └── release.yml         # GitHub Actions 云端编译发布
 └── go.mod
 ```
 
@@ -221,6 +257,20 @@ browser:
 5. **手动触发**：`POST /api/update`（加 API Key 鉴权）
 
 > 当前环境 Git 仓库需要先 clone 再 pull，或在已有仓库目录中运行。
+
+---
+
+## 📦 云端编译（GitHub Actions）
+
+推送 `v*` tag 或手动触发 `Release` 工作流，即可在云端构建并发布多平台产物：
+
+```bash
+git tag v0.0.4 && git push origin v0.0.4
+```
+
+- 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`
+- 产物自动打包 `zip` + `SHA256.txt`，挂到 GitHub Release
+- 版本号经 `-ldflags -X mxgjgt/model.Version=` 注入
 
 ---
 
