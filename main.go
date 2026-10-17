@@ -39,6 +39,13 @@ func main() {
 	}
 	cfg := config.GetConfig()
 
+	// 3.1 加载官方站 cover_id 字典（可选缺失，仅打印警告）
+	if err := service.InitCoverIDDict(dataDir); err != nil {
+		log.Printf("[WARN] cover_id 字典加载失败: %v", err)
+	} else {
+		log.Printf("[INFO] cover_id 字典已加载，共 %d 个平台", len(service.GetPlatforms()))
+	}
+
 	// ===== 4. 启动自动更新（后台 cron） =====
 	if cronObj, err := service.StartAutoUpdater(); err != nil {
 		log.Printf("[WARN] 自动更新启动失败: %v", err)

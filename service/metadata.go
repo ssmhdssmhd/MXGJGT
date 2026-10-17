@@ -143,12 +143,17 @@ func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 		}
 	}
 
-	// 2. 尝试 HTML og:title / meta (对非反爬站有效)
+	// 2. 本地 cover_id 字典命中 —— 最稳的一层，0 网络依赖
+	if dictTitle, _, hit := LookupCoverID(u.String()); hit && !isSuspiciousTitle(dictTitle) {
+		return dictTitle, "", "cover-id-dict"
+	}
+
+	// 3. 尝试 HTML og:title / meta (对非反爬站有效)
 	if htmlTitle, htmlEp := fetchTitleFromPage(u.String()); isGoodTitle(htmlTitle) {
 		return htmlTitle, htmlEp, "html-meta"
 	}
 
-	// 3. 从 URL path 里找所有可能的 segment，去豆瓣逐个搜
+	// 4. 从 URL path 里找所有可能的 segment，去豆瓣逐个搜
 	segments := extractChineseSegments(path)
 	for _, seg := range segments {
 		if isSuspiciousTitle(seg) {

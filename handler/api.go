@@ -33,6 +33,13 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.GET("/mappings",     handleAdminListMap)
 			admin.POST("/mapping",     handleAdminSetMap)
 			admin.POST("/reload",      handleAdminReload)
+
+			// 官方站 cover_id → 剧名 字典管理
+			admin.GET("/dict/",             handleAdminDictStats)       // 所有平台统计
+			admin.GET("/dict/:platform",    handleAdminDictList)        // 某平台所有条目
+			admin.POST("/dict/",            handleAdminDictSave)        // 新增 / 更新 一条
+			admin.DELETE("/dict/:platform/:cover_id", handleAdminDictDel) // 删除一条
+			admin.POST("/dict/reload",      handleAdminDictReload)      // 热重载
 		}
 
 		api.POST("/update", handleUpdate)
@@ -218,4 +225,86 @@ func handleNotFound(c *gin.Context) {
 func errMsg(err error) string {
 	if err == nil { return "" }
 	return err.Error()
+}
+
+// ========== 官方站 cover_id → 剧名 字典管理 ==========
+
+// DictSaveRequest 新增 / 更新 一条字典
+type DictSaveRequest struct {
+	Platform string `json:"platform" binding:"required"`
+	CoverID  string `json:"cover_id" binding:"required"`
+	Title    string `json:"title" binding:"required"`
+}
+
+// handleAdminDictStats GET /api/admin/dict/ — 所有平台统计
+func handleAdminDictStats(c *gin.Context) {
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Data: map[string]any{
+			"total_platforms": len(service.GetPlatforms()),
+			"stats":           service.ListCoverIDStats(),
+		},
+	})
+}
+
+// handleAdminDictList GET /api/admin/dict/:platform — 某平台所有条目
+func handleAdminDictList(c *gin.Context) {
+	platform := strings.TrimSpace(c.Param("platform"))
+	entries, err := service.ListCoverIDs(platform)
+	if err != nil {
+		c.JSON(http.StatusOK, model.Fail(404, err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Data: map[string]any{
+			"platform": platform,
+			"count":    len(entries),
+			"entries":  entries,
+		},
+	})
+}
+
+// handleAdminDictSave POST /api/admin/dict/ — 新增 / 更新
+func handleAdminDictSave(c *gin.Context) {
+	var req DictSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, model.Fail(400, "参数错误: "+err.Error()))
+		return
+	}
+	if err := service.SaveCoverID(req.Platform, req.CoverID, req.Title); err != nil {
+		c.JSON(http.StatusOK, model.Fail(500, err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.OK(req.Title, "", ""))
+}
+
+// handleAdminDictDel DELETE /api/admin/dict/:platform/:cover_id
+func handleAdminDictDel(c *gin.Context) {
+	platform := strings.TrimSpace(c.Param("platform"))
+	coverID := strings.TrimSpace(c.Param("cover_id"))
+	if platform == "" || coverID == "" {
+		c.JSON(http.StatusOK, model.Fail(400, "platform / cover_id 不能为空"))
+		return
+	}
+	if err := service.DeleteCoverID(platform, coverID); err != nil {
+		c.JSON(http.StatusOK, model.Fail(404, err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.OK("", "", ""))
+}
+
+// handleAdminDictReload POST /api/admin/dict/reload
+func handleAdminDictReload(c *gin.Context) {
+	if err := service.ReloadCoverIDDict(); err != nil {
+		c.JSON(http.StatusOK, model.Fail(500, "热重载失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  "cover_id 字典已热重载",
+		Data: map[string]any{
+			"platforms": len(service.GetPlatforms()),
+		},
+	})
 }

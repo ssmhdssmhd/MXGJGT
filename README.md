@@ -12,6 +12,7 @@
 | 🕶️ 伪装模式 | 根路径和任意未知路径返回 `404` 伪装 JSON 或 HTML 页面 |
 | 🔍 七大平台识别 | 腾讯视频、爱奇艺、优酷、芒果TV、搜狐视频、乐视视频、哔哩哔哩 |
 | 🎬 影视名 + 集数提取 | 支持从 URL 和官方页面 HTML meta 双重提取 |
+| 📘 cover_id 字典 | 本地 `cover_id → 剧名` 字典（0 网络依赖、可热更新、各平台 pattern 自动提取） |
 | 🔄 资源站替换 | 可配置多个资源站，自动从资源站搜索影视并返回替代链接 |
 | 🛠️ 自动更新 | Cron 定时 + 国内镜像测速 + git pull + go build |
 | ⚙️ 配置化 | YAML 配置文件，资源站列表独立配置 |
@@ -98,6 +99,20 @@ curl http://127.0.0.1:8080/api/version
 
 手动触发更新（需要在 `config.yaml` 的 `security.api_key` 设置后携带 `X-API-Key` 或 `?key=`）。
 
+### 📘 官方站 cover_id → 剧名 字典管理
+
+字典文件 `data/cover_ids.json` 首次启动自动生成，各平台预置 host + regex pattern 骨架。支持以下管理接口：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/admin/dict/` | 所有平台统计（平台名 / 条目数 / hosts） |
+| GET | `/api/admin/dict/:platform` | 列出某平台全部 `cover_id → 剧名` |
+| POST | `/api/admin/dict/` | 新增 / 更新 一条（JSON: `{"platform":"腾讯视频","cover_id":"abc123","title":"庆余年"}`） |
+| DELETE | `/api/admin/dict/:platform/:cover_id` | 删除一条 |
+| POST | `/api/admin/dict/reload` | 热重载磁盘上的字典文件 |
+
+**解析链位置**：字典命中是第 3 层（wd手动 → B站 API → **字典** → HTML meta → 豆瓣搜索），0 网络依赖秒级返回。
+
 ---
 
 ## 📂 项目结构
@@ -110,17 +125,22 @@ MXGJGT/
 │   └── version.go
 ├── service/                # 业务逻辑
 │   ├── parser.go           # 官方网站识别 + 影视名/集数提取
+│   ├── metadata.go         # B站 API + 豆瓣兜底
+│   ├── coverid_dict.go     # 官方站 cover_id → 剧名 字典引擎
 │   ├── resource.go         # 资源站搜索
 │   └── updater.go          # 自动更新（镜像测速 + git pull）
 ├── config/
 │   └── config.go           # 配置加载
 ├── model/
-│   └── types.go            # 数据结构
+│   ├── types.go            # 数据结构
+│   └── version.go          # 版本号
 ├── utils/
 │   └── utils.go            # HTTP 工具
 ├── data/
 │   ├── config.yaml         # 主配置
-│   └── sites.yaml          # 资源站列表
+│   ├── sites.yaml          # 资源站列表
+│   ├── mappings.yaml       # 官方站→资源站优先映射
+│   └── cover_ids.json      # 官方站 cover_id → 剧名 字典数据
 ├── static/
 │   └── 404.html            # 可选的伪装 HTML 页面
 └── go.mod

@@ -81,11 +81,12 @@ var titleMetaSelectors = []string{
 // 优先级链:
 //  1. 用户手动 ?wd= / ?keyword=    →  直接用，跳过一切
 //  2. 官方专用 API (B站 BV号)        →  api.bilibili.com
-//  3. HTML og:title / meta           →  腾讯/爱奇艺/优酷 反爬时会被过滤掉
-//  4. 豆瓣搜索 (movie.douban.com)    →  用 URL path 里的 segment 去搜
-//  5. URL query 其他字段去豆瓣搜
-//  6. path 所有非 ID segment 拼起来去豆瓣搜
-//  7. 全都不行 → 返回 error 让用户传 wd=
+//  3. 本地 cover_id 字典命中         →  data/cover_ids.json，0 网络依赖
+//  4. HTML og:title / meta           →  腾讯/爱奇艺/优酷 反爬时会被过滤掉
+//  5. 豆瓣搜索 (movie.douban.com)    →  用 URL path 里的 segment 去搜
+//  6. URL query 其他字段去豆瓣搜
+//  7. path 所有非 ID segment 拼起来去豆瓣搜
+//  8. 全都不行 → 返回 error 让用户传 wd=
 func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {

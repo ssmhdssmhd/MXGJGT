@@ -1,3 +1,68 @@
+MXGJGT v0.0.4 202610170020
+===========================
+
+## 功能升级 — 官方站 cover_id → 剧名 字典
+
+### ✅ 新增功能
+
+1. **官方站 cover_id 字典引擎**
+   - 数据文件 `data/cover_ids.json`（首次启动自动生成模板）
+   - 7 大平台预置 host + pattern 骨架（腾讯/爱奇艺/优酷/芒果TV/搜狐/乐视/B站）
+   - 每个平台支持多条正则 pattern，从 URL path / query 里自动抠 cover_id
+   - 内存查询 + 原子持久化写（.tmp → rename），启动自动加载
+   - 热重载 `POST /api/admin/dict/reload`
+
+2. **解析链新增第 3 层：字典命中（0 网络依赖）**
+   - ResolveOfficialTitle 优先级链:
+     1. 用户手动 wd=
+     2. B站 BV API
+     3. **cover_id 字典命中** ← 新增
+     4. HTML og:title / meta
+     5. 豆瓣搜索
+   - 字典命中优先于 HTML 和豆瓣，秒级返回剧名，避免反爬失败或网络超时
+
+3. **字典管理接口（/api/admin/dict/）**
+   - `GET  /api/admin/dict/`              所有平台统计（平台名 + 条目数 + hosts）
+   - `GET  /api/admin/dict/:platform`     某平台所有 cover_id → 剧名
+   - `POST /api/admin/dict/`              新增 / 更新 一条 `{platform, cover_id, title}`
+   - `DELETE /api/admin/dict/:platform/:cover_id`  删除一条
+   - `POST /api/admin/dict/reload`        热重载字典文件
+
+### ✅ 预置示例数据（首次启动即可验证）
+| 平台 | cover_id 示例 | 剧名 |
+|---|---|---|
+| 腾讯视频 | mzc0020053q73k | 狂飙 |
+| 爱奇艺 | 25217847 | 狂飙 |
+| 芒果TV | 60637304 | 庆余年 |
+| B站 | BV1n4411p7Fh | 狂飙 |
+
+### 🧪 验证结果（覆盖各平台 pattern）
+
+```
+[命中] v.qq.com    /x/cover/abc123.html        → 庆余年
+[命中] v.qq.com    /x/cover/mzc0020053q73k.html → 狂飙
+[命中] iqiyi.com   /v_25217847.html             → 狂飙
+[命中] mgtv.com    /b/60637304.html             → 庆余年
+[命中] bilibili    /video/BV1n4411p7Fh          → 狂飙
+[miss ] v.qq.com    /x/cover/notexist.html      → (字典无此 ID)
+[miss ] youtube    watch?v=abc                  → (未配置此平台 host)
+```
+
+### 📁 变更文件
+
+```
+new:      service/coverid_dict.go  # 字典引擎（加载 + pattern 提取 + CRUD + 持久化）
+new:      data/cover_ids.json      # 字典数据文件（首次启动自动生成，含预置示例）
+modified: service/metadata.go      # ResolveOfficialTitle 插入第 3 层：字典命中
+modified: service/parser.go        # 更新优先级链注释（1→8）
+modified: main.go                  # 启动时 InitCoverIDDict(dataDir) 加载
+modified: handler/api.go           # 新增 /api/admin/dict/ 路由 + 5 个 handler
+modified: model/version.go         # 0.0.3 → 0.0.4
+modified: update.log               # 新增 v0.0.4 版本日志
+```
+
+---
+
 MXGJGT v0.0.2 202610152326
 ===========================
 

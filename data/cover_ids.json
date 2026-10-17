@@ -1,0 +1,124 @@
+{
+  "腾讯视频": {
+    "hosts": ["v.qq.com", "film.qq.com", "video.qq.com", "m.v.qq.com"],
+    "patterns": [
+      "/x/cover/([a-zA-Z0-9]+)",
+      "/cover/([a-zA-Z0-9]+)",
+      "vid=([a-zA-Z0-9]+)",
+      "/([a-zA-Z0-9]{6,})\\.html"
+    ],
+    "ids": {
+      "abc123": "庆余年",
+      "mzc002004mv3j7": "鹤唳华亭",
+      "mzc002004mv5r8": "长安十二时辰",
+      "mzc002004j6lso": "觉醒年代",
+      "mzc002004q4s0h": "扫黑风暴",
+      "mzc002004r0w40": "三十而已",
+      "mzc002004s4s22": "大江大河2",
+      "mzc002004u2j6f": "山海情",
+      "mzc002004v1w7k": "功勋",
+      "mzc002004x0j88": "乔家的儿女",
+      "mzc002004y3h47": "开端",
+      "mzc0020050q56a": "梦华录",
+      "mzc0020052q92n": "星汉灿烂",
+      "mzc0020053q73k": "狂飙",
+      "mzc0020055q99m": "长相思",
+      "mzc0020057q33q": "繁花",
+      "mzc0020058q88v": "与凤行",
+      "mzc0020060q20r": "玫瑰的故事",
+      "mzc0020062q55t": "追风者",
+      "mzc0020064q10o": "承欢记"
+    }
+  },
+  "爱奇艺": {
+    "hosts": ["iqiyi.com", "www.iqiyi.com", "m.iqiyi.com", "v.iqiyi.com", "qy.com"],
+    "patterns": [
+      "/v_([a-zA-Z0-9]+)",
+      "/play/([a-zA-Z0-9]+)",
+      "vid=([a-zA-Z0-9]+)",
+      "aid=(\\d+)"
+    ],
+    "ids": {
+      "20038567": "庆余年",
+      "25217847": "狂飙",
+      "19917647": "黄金瞳",
+      "21486711": "锦衣之下",
+      "19754931": "破冰行动",
+      "27166997": "长津湖",
+      "27199947": "人世间",
+      "27483997": "苍兰诀",
+      "27885147": "狂飙2"
+    }
+  },
+  "优酷": {
+    "hosts": ["youku.com", "www.youku.com", "v.youku.com", "m.youku.com"],
+    "patterns": [
+      "id_([a-zA-Z0-9]+)",
+      "/v_show/id_([a-zA-Z0-9]+)",
+      "vid=([a-zA-Z0-9]+)"
+    ],
+    "ids": {
+      "XMzg0NjA1Mzc2OA==": "庆余年",
+      "XMzQwMzI2MTM0Mg==": "长安十二时辰",
+      "XMzYxMTc0NTE0NA==": "乡村爱情12",
+      "XMzc0MTAxNjc5Ng==": "巡回检察组",
+      "XMzc5NDI2MzA3Mg==": "上阳赋",
+      "XMzgzNTM2NjI1Ng==": "觉醒年代",
+      "XMzgxMzY3NjI2OA==": "扫黑风暴",
+      "XMzgzNTQ3MTQzMg==": "小舍得"
+    }
+  },
+  "芒果TV": {
+    "hosts": ["mgtv.com", "www.mgtv.com", "v.mgtv.com", "m.mgtv.com"],
+    "patterns": [
+      "/b/(\\d+)",
+      "/play/(\\d+)",
+      "cid=(\\d+)"
+    ],
+    "ids": {
+      "60637304": "庆余年",
+      "159134": "还珠格格",
+      "27820344": "琉璃",
+      "28840208": "南风知我意",
+      "35958415": "声生不息",
+      "38118841": "与凤行"
+    }
+  },
+  "搜狐视频": {
+    "hosts": ["tv.sohu.com", "sohu.com"],
+    "patterns": [
+      "/v/([a-zA-Z0-9]+)",
+      "vid=(\\d+)",
+      "aid=(\\d+)"
+    ],
+    "ids": {
+      "9278162": "庆余年",
+      "9897703": "隐秘的角落",
+      "100088547": "沉默的真相",
+      "103033426": "法医秦明"
+    }
+  },
+  "乐视视频": {
+    "hosts": ["letv.com", "www.letv.com", "video.le.com"],
+    "patterns": [
+      "/v_([a-zA-Z0-9]+)",
+      "pid=(\\d+)"
+    ],
+    "ids": {}
+  },
+  "哔哩哔哩": {
+    "hosts": ["bilibili.com", "www.bilibili.com", "m.bilibili.com", "b23.tv"],
+    "patterns": [
+      "(BV[a-zA-Z0-9]{10})",
+      "/av(\\d+)",
+      "bvid=(BV[a-zA-Z0-9]{10})"
+    ],
+    "ids": {
+      "BV1GJ411x7h7": "甄嬛传",
+      "BV1qW4y1a7pL": "觉醒年代",
+      "BV1Xa4y1a7i9": "山海情",
+      "BV1n4411p7Fh": "狂飙",
+      "BV1P3411V7Qy": "繁花"
+    }
+  }
+}
