@@ -76,7 +76,16 @@ var titleMetaSelectors = []string{
 	`meta[property="og:description"]`,
 }
 
-// ParseOfficial 识别官方视频网站并提取影视信息
+// ParseOfficial 识别官方视频网站并提取影视信息 —— 多层降级策略
+//
+// 优先级链:
+//  1. 用户手动 ?wd= / ?keyword=    →  直接用，跳过一切
+//  2. 官方专用 API (B站 BV号)        →  api.bilibili.com
+//  3. HTML og:title / meta           →  腾讯/爱奇艺/优酷 反爬时会被过滤掉
+//  4. 豆瓣搜索 (movie.douban.com)    →  用 URL path 里的 segment 去搜
+//  5. URL query 其他字段去豆瓣搜
+//  6. path 所有非 ID segment 拼起来去豆瓣搜
+//  7. 全都不行 → 返回 error 让用户传 wd=
 func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -104,68 +113,72 @@ func ParseOfficial(rawURL string) (*model.VideoSite, error) {
 	// 匹配官方网站
 	for _, site := range officialSites {
 		for _, alias := range site.Aliases {
-			if strings.Contains(host, alias) {
-				result := &model.VideoSite{
-					Name:     site.Name,
-					Domain:   site.Domain,
-					Aliases:  site.Aliases,
-					Original: rawURL,
-				}
+			if !strings.Contains(host, alias) {
+				continue
+			}
 
-				// 1. 用户手动 wd= 直接用（跳过一切自动解析）
-				if userWD != "" {
-					result.Title = cleanTitle(userWD)
-					result.Episode = extractEpisode(path, rawURL)
-					return result, nil
-				}
+			result := &model.VideoSite{
+				Name:     site.Name,
+				Domain:   site.Domain,
+				Aliases:  site.Aliases,
+				Original: rawURL,
+			}
 
-				// 2. 先从 URL 路径提取
-				result.Title = extractTitleFromURL(parsed)
+			// 1. 用户手动 wd= 直接用
+			if userWD != "" {
+				result.Title = cleanTitle(userWD)
 				result.Episode = extractEpisode(path, rawURL)
-
-				// 3. 抓 HTML 里的 meta 标题 —— 但很多官方站已反爬，需要质量判断
-				htmlTitle, htmlEpisode := fetchTitleFromPage(rawURL)
-				if isGoodTitle(htmlTitle) {
-					result.Title = htmlTitle
-					if htmlEpisode != "" {
-						result.Episode = htmlEpisode
-					}
-				}
-
-				// 4. 如果啥都没拿到，返回 error 让用户传 wd=
-				if result.Title == "" || isSuspiciousTitle(result.Title) {
-					return result, fmt.Errorf("无法从该链接自动提取剧名，请附加参数 ?wd=剧名 例如 /api/clean/?wd=庆余年&url=%s", rawURL)
-				}
-
 				return result, nil
 			}
-		}
-	}
 
-	// 未匹配官方站点
-	episode := extractEpisode(path, rawURL)
-	title := extractTitleFromURL(parsed)
-
-	if userWD != "" {
-		title = cleanTitle(userWD)
-	}
-
-	// 通用：也尝试抓取页面标题（也需要质量判断）
-	if title == "" || isSuspiciousTitle(title) {
-		if hTitle, hEp := fetchTitleFromPage(rawURL); isGoodTitle(hTitle) {
-			title = hTitle
-			if episode == "" {
-				episode = hEp
+			// 2-6: 多层降级解析
+			title, episode, _ := ResolveOfficialTitle(parsed)
+			if title != "" && !isSuspiciousTitle(title) {
+				result.Title = cleanTitle(title)
+				if episode != "" {
+					result.Episode = episode
+				} else {
+					result.Episode = extractEpisode(path, rawURL)
+				}
+				return result, nil
 			}
+
+			// 7. 实在不行，返回友好错误
+			return result, fmt.Errorf(
+				"无法从该链接自动提取剧名，请附加参数 ?wd=剧名 例如 /api/clean/?wd=庆余年&url=%s",
+				rawURL,
+			)
 		}
+	}
+
+	// 未匹配官方站点：也走多层降级
+	if userWD != "" {
+		return &model.VideoSite{
+			Name:     "未知来源",
+			Domain:   host,
+			Original: rawURL,
+			Title:    cleanTitle(userWD),
+			Episode:  extractEpisode(path, rawURL),
+		}, nil
+	}
+
+	title, episode, _ := ResolveOfficialTitle(parsed)
+	if title != "" && !isSuspiciousTitle(title) {
+		return &model.VideoSite{
+			Name:     "未知来源",
+			Domain:   host,
+			Original: rawURL,
+			Title:    cleanTitle(title),
+			Episode:  episode,
+		}, nil
 	}
 
 	return &model.VideoSite{
 		Name:     "未知来源",
 		Domain:   host,
 		Original: rawURL,
-		Title:    title,
-		Episode:  episode,
+		Title:    extractTitleFromURL(parsed),
+		Episode:  extractEpisode(path, rawURL),
 	}, nil
 }
 
@@ -198,6 +211,26 @@ func isSuspiciousTitle(t string) bool {
 			return true
 		}
 		if strings.Contains(t, "矩形备份") || strings.Contains(t, "热搜榜") {
+			return true
+		}
+		// 站点 og:description 级垃圾：以站点名开头 + 跟着"在线/官方/网站"等
+		if strings.HasPrefix(t, kw) && len(t) > len(kw) {
+			rest := strings.TrimSpace(t[len(kw):])
+			if strings.HasPrefix(rest, " ") || strings.HasPrefix(rest, "在") ||
+				strings.HasPrefix(rest, "官") || strings.HasPrefix(rest, "提") ||
+				strings.HasPrefix(rest, "免") || strings.HasPrefix(rest, "高") {
+				return true
+			}
+		}
+	}
+
+	// 1.5 站点通用垃圾文案
+	siteGarbagePatterns := []string{
+		"在线视频网站", "海量正版", "正版高清", "资讯等内容",
+		"一网打尽", "官方网站", "提供海量", "免费在线观看",
+	}
+	for _, p := range siteGarbagePatterns {
+		if strings.Contains(t, p) {
 			return true
 		}
 	}
