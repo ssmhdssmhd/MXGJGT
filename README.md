@@ -265,7 +265,7 @@ browser:
 推送 `v*` tag 或手动触发 `Release` 工作流，即可在云端构建并发布多平台产物：
 
 ```bash
-git tag v0.0.4 && git push origin v0.0.4
+git tag v0.0.5 && git push origin v0.0.5
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`
