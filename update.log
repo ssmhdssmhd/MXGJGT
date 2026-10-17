@@ -1,3 +1,56 @@
+MXGJGT v0.0.6 202610180701
+===========================
+
+## 网页后台上线 — 域名 /mx/ 登录后可视化管理
+
+> 浏览器访问 `http://<域名>:9991/mx/` 进入登录页，登录后可管理资源站 / 平台映射 / 在线更新，无需再 curl。
+
+### ✅ 新增功能
+
+1. **网页后台（/mx/）**
+   - 新增 `handler/mxadmin.html`：登录页 + 管理界面（资源站 / 平台映射 / 系统）
+   - 新增 `handler/adminauth.go`：随机令牌会话 + HttpOnly Cookie + 常量时间比对密码
+   - 登录页 logo / favicon 取自 MXLOGO 仓库（`raw.githubusercontent.com/ssmhdssmhd/MXLOGO`）
+   - 新增配置段 `admin`（enabled / path / username / password / session_hours）
+   - `admin.enabled: false` 时 `/mx/` 与 `/api/admin/*` 统一返回伪装 404
+   - 默认账号 `admin` / `mxgjgt`（务必修改）
+
+2. **后台管理接口加登录保护**
+   - `/api/admin/*`（sites / site / mapping / reload）全部要求登录态，未登录返回 401
+   - `POST /api/update` 支持已登录后台免 API Key
+
+### 🐛 修复
+
+1. `ResourceSite` / `SiteMapping` 仅有 yaml tag，JSON 序列化为帕斯卡键名（`ID`/`Name`），
+   导致网页后台「资源站表格」「平台映射」渲染空白 → 补齐 json tag（`id`/`name`/`official`/`sites`）
+
+### 📋 实测（本地服务）
+
+```
+登录页    http://127.0.0.1:9991/mx/          → 正常显示 logo + 登录表单 ✅
+登录      admin / mxgjgt                      → 200 + Cookie 会话 ✅
+未登录    /api/admin/sites                    → 401 ✅
+登录后    资源站表格                          → 显示 吉吉资源 M3U8 ✅
+登录后    平台映射                            → 7 行官方平台名 + 勾选框正常 ✅
+风控      错误密码 / 台账删除接口             → 401 / 均可正常 CRUD ✅
+伪装      根路径                              → {"code":404,"msg":"页面未找到"} ✅
+```
+
+### 📁 变更文件
+
+```
+new:      handler/adminauth.go # 登录鉴权 + 会话 + 页面/登录路由
+new:      handler/mxadmin.html # 网页后台页面（登录 + 管理界面）
+modified: handler/api.go       # 注册 /mx/ 路由 + /api/admin 挂鉴权 + /api/update 会话放行
+modified: model/types.go       # 新增 AdminConfig；ResourceSite/SiteMapping 补 json tag
+modified: config/config.go     # admin 段默认值 + 模板
+modified: model/version.go     # 0.0.5 → 0.0.6
+modified: Makefile             # VERSION 0.0.6
+modified: README.md            # 网页后台章节 + admin 配置 + 更新机制校正
+```
+
+---
+
 MXGJGT v0.0.5 202610180641
 ===========================
 

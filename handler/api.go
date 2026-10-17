@@ -23,7 +23,8 @@ func RegisterRoutes(r *gin.Engine) {
 		api.GET("/search/", handleSearch)
 		api.GET("/version", handleVersion)
 
-		admin := api.Group("/admin")
+		// 后台管理接口：需登录态
+		admin := api.Group("/admin", adminAuth())
 		{
 			admin.GET("/sites",        handleAdminListSites)
 			admin.POST("/site/auto",   handleAdminAutoCMS)
@@ -37,7 +38,28 @@ func RegisterRoutes(r *gin.Engine) {
 
 		api.POST("/update", handleUpdate)
 	}
+
+	// 网页后台登录入口（路径来自配置，默认 /mx）
+	registerAdminUI(r)
+
 	r.NoRoute(handleNotFound)
+}
+
+// registerAdminUI 注册网页后台页面与登录路由
+func registerAdminUI(r *gin.Engine) {
+	cfg := config.GetConfig()
+	if cfg == nil || !cfg.Admin.Enabled {
+		return
+	}
+	p := strings.TrimRight(strings.TrimSpace(cfg.Admin.Path), "/")
+	if p == "" {
+		p = "/mx"
+	}
+	r.GET(p, handleAdminPage)
+	r.GET(p+"/", handleAdminPage)
+	r.POST(p+"/api/login", handleAdminLogin)
+	r.POST(p+"/api/logout", handleAdminLogout)
+	r.GET(p+"/api/me", handleAdminMe)
 }
 
 // ========= 核心清洗接口 =========
@@ -206,10 +228,14 @@ func handleVersion(c *gin.Context) {
 }
 
 func handleUpdate(c *gin.Context) {
-	if cfg := config.GetConfig(); cfg != nil && cfg.Security.APIKey != "" {
-		if k := c.GetHeader("X-API-Key"); k == "" {
+	cfg := config.GetConfig()
+	// 已登录后台会话时放行；否则按 security.api_key 校验
+	if cfg != nil && cfg.Security.APIKey != "" && !isAdminSession(c) {
+		k := c.GetHeader("X-API-Key")
+		if k == "" {
 			k = c.Query("key")
-		} else if k != cfg.Security.APIKey {
+		}
+		if k != cfg.Security.APIKey {
 			c.JSON(200, model.Fail(403, "API Key 无效"))
 			return
 		}

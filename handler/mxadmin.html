@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MXGJGT 后台</title>
+<link rel="icon" href="https://raw.githubusercontent.com/ssmhdssmhd/MXLOGO/main/favicon/favicon-32.png">
+<style>
+  :root{
+    --brand:#2f6bff; --brand2:#7c4dff; --ok:#16a34a; --err:#e5484d;
+    --bg:#f4f6fb; --card:#ffffff; --text:#1f2430; --sub:#6b7280;
+    --line:#e6e9f0; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg)}
+  a{color:var(--brand)}
+  .hide{display:none !important}
+
+  /* ===== 登录 ===== */
+  #login-view{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(1200px 600px at 20% 10%,#1e2a5a 0%,#0e1430 45%,#070a18 100%)}
+  .login-card{width:min(400px,92vw);background:#fff;border-radius:20px;padding:36px 30px 30px;
+    box-shadow:0 30px 80px rgba(0,0,0,.45);text-align:center}
+  .login-card img{width:190px;max-width:70%;margin:0 auto 14px;display:block}
+  .login-card h1{font-size:18px;margin:0 0 4px}
+  .login-card p.sub{color:var(--sub);font-size:13px;margin:0 0 22px}
+  .field{text-align:left;margin-bottom:14px}
+  .field label{display:block;font-size:13px;color:var(--sub);margin-bottom:6px}
+  .field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;outline:none;transition:.15s}
+  .field input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(47,107,255,.15)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;cursor:pointer;
+    padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;transition:.15s}
+  .btn.primary{width:100%;color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand2))}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.ghost{background:#eef1f8;color:var(--text)}
+  .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
+  .btn.danger{background:#fdecec;color:var(--err)}
+  .err{color:var(--err);font-size:13px;min-height:18px;margin-top:10px}
+
+  /* ===== 后台 ===== */
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
+    padding:12px 20px;background:#fff;border-bottom:1px solid var(--line)}
+  header img{height:30px}
+  header .title{font-weight:700}
+  header .ver{font-size:12px;color:var(--sub)}
+  header .spacer{flex:1}
+  nav{display:flex;gap:6px;padding:12px 20px 0;max-width:1080px;margin:0 auto;flex-wrap:wrap}
+  nav button{border:0;background:#eef1f8;color:var(--text);padding:9px 16px;border-radius:999px;
+    font-size:14px;cursor:pointer}
+  nav button.on{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff}
+  main{max-width:1080px;margin:0 auto;padding:16px 20px 60px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:14px}
+  .panel h2{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:10px}
+  .panel h2 .spacer{flex:1}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--sub);font-weight:600;font-size:12px}
+  tr:last-child td{border-bottom:0}
+  code.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#374151;
+    background:#f2f4f9;padding:2px 6px;border-radius:6px;word-break:break-all}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px}
+  .pill.on{background:#e7f7ed;color:var(--ok)}
+  .pill.off{background:#f1f2f5;color:var(--sub)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .row .field{margin-bottom:0;flex:1 1 180px}
+  .maprow{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .maprow:last-child{border-bottom:0}
+  .maprow .off{font-weight:600;min-width:96px;padding-top:6px}
+  .checks{display:flex;gap:12px;flex-wrap:wrap;flex:1}
+  .checks label{display:flex;align-items:center;gap:6px;font-size:13px;background:#f5f7fc;
+    padding:6px 10px;border-radius:8px;cursor:pointer}
+  .empty{color:var(--sub);font-size:14px;padding:14px 0}
+  .kv{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
+  .kv div b{color:var(--sub);font-weight:600;margin-right:6px}
+
+  /* 弹窗 */
+  .mask{position:fixed;inset:0;background:rgba(10,14,30,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal{background:#fff;border-radius:16px;width:min(560px,96vw);max-height:90vh;overflow:auto;padding:22px}
+  .modal h3{margin:0 0 16px;font-size:16px}
+  .modal .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal .grid .field.full{grid-column:1/-1}
+  .modal footer{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+  .modal textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical}
+  /* 提示 */
+  #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+    background:#111827;color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;opacity:0;
+    pointer-events:none;transition:.25s;z-index:99;max-width:88vw}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:640px){.modal .grid{grid-template-columns:1fr}header img{height:24px}}
+</style>
+</head>
+<body>
+
+<!-- ===== 登录页 ===== -->
+<div id="login-view">
+  <form class="login-card" id="login-form" autocomplete="off">
+    <img src="https://raw.githubusercontent.com/ssmhdssmhd/MXLOGO/main/web/web-logo.png" alt="MXLOGO">
+    <h1>MXGJGT 后台管理</h1>
+    <p class="sub">登录后可管理资源站 / 平台映射 / 系统更新</p>
+    <div class="field">
+      <label>用户名</label>
+      <input id="username" name="username" placeholder="请输入用户名" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input id="password" name="password" type="password" placeholder="请输入密码" autocomplete="current-password">
+    </div>
+    <button class="btn primary" type="submit">登 录</button>
+    <div class="err" id="login-err"></div>
+  </form>
+</div>
+
+<!-- ===== 后台主页 ===== -->
+<div id="app-view" class="hide">
+  <header>
+    <img src="https://raw.githubusercontent.com/ssmhdssmhd/MXLOGO/main/web/web-logo.png" alt="logo">
+    <span class="title">MXGJGT 后台</span>
+    <span class="ver" id="hdr-ver"></span>
+    <span class="spacer"></span>
+    <span class="ver" id="hdr-user"></span>
+    <button class="btn ghost sm" id="btn-logout">退出</button>
+  </header>
+
+  <nav>
+    <button data-tab="sites" class="on">资源站管理</button>
+    <button data-tab="maps">平台映射</button>
+    <button data-tab="sys">系统 / 更新</button>
+  </nav>
+
+  <main>
+    <!-- 资源站 -->
+    <section id="tab-sites" class="panel">
+      <h2>资源站列表 <span class="spacer"></span>
+        <button class="btn ghost sm" id="btn-refresh-sites">刷新</button>
+        <button class="btn ghost sm" id="btn-auto">苹果CMS 自动分析</button>
+        <button class="btn primary sm" id="btn-add-site">新增资源站</button>
+      </h2>
+      <div id="sites-box"></div>
+    </section>
+
+    <!-- 映射 -->
+    <section id="tab-maps" class="panel hide">
+      <h2>官方平台 → 资源站 优先映射 <span class="spacer"></span>
+        <button class="btn ghost sm" id="btn-refresh-maps">刷新</button>
+      </h2>
+      <p class="empty">勾选该官方平台优先使用的资源站（可多选，按需保存）。</p>
+      <div id="maps-box"></div>
+    </section>
+
+    <!-- 系统 -->
+    <section id="tab-sys" class="panel hide">
+      <h2>系统信息</h2>
+      <div class="kv" id="sys-info"></div>
+      <div style="margin-top:18px" class="row">
+        <button class="btn ghost" id="btn-reload">重载配置</button>
+        <button class="btn primary" id="btn-update">检查并更新</button>
+      </div>
+      <p class="empty" id="update-msg"></p>
+    </section>
+  </main>
+</div>
+
+<div id="toast"></div>
+<div id="modal-root"></div>
+
+<script>
+(function () {
+  "use strict";
+  // 后台入口路径（如 /mx），据此拼接口
+  var BASE = location.pathname.replace(/\/+$/, "");
+  if (!BASE) BASE = "/mx";
+  var API = BASE + "/api";
+
+  function $(s, r) { return (r || document).querySelector(s); }
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (m) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m];
+    });
+  }
+  var toastTimer;
+  function toast(msg) {
+    var t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2200);
+  }
+  // 统一请求：cookie 同源携带
+  function api(path, opt) {
+    opt = opt || {};
+    var conf = { method: opt.method || "GET", credentials: "same-origin", headers: {} };
+    if (opt.body !== undefined) {
+      conf.headers["Content-Type"] = "application/json";
+      conf.body = JSON.stringify(opt.body);
+    }
+    return fetch(path, conf).then(function (r) {
+      if (r.status === 401) { showLogin(); throw new Error("未登录"); }
+      return r.json();
+    });
+  }
+
+  // ===== 视图切换 =====
+  function showLogin() { $("#login-view").classList.remove("hide"); $("#app-view").classList.add("hide"); $("#hdr-user").textContent = ""; }
+  function showApp(u) {
+    $("#login-view").classList.add("hide"); $("#app-view").classList.remove("hide");
+    $("#hdr-user").textContent = u ? ("· " + u) : "";
+    api("/api/version").then(function (r) {
+      var d = r.data || {};
+      $("#hdr-ver").textContent = "v" + (d.version || "?");
+      $("#sys-info").innerHTML =
+        '<div><b>版本</b>' + esc(d.version) + "</div>" +
+        '<div><b>构建时间</b>' + esc(d.build) + "</div>" +
+        '<div><b>更新仓库</b>' + esc(d.repo_url) + "</div>" +
+        '<div><b>定时更新</b>' + (d.updater ? "已开启" : "已关闭") + "</div>";
+    }).catch(function () {});
+    loadSites(); loadMaps();
+  }
+
+  // ===== 登录 / 登出 =====
+  $("#login-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("#login-err").textContent = "";
+    api(API + "/login", { method: "POST", body: { username: $("#username").value, password: $("#password").value } })
+      .then(function (r) {
+        if (r.code === 200) { $("#password").value = ""; checkAuth(); }
+        else { $("#login-err").textContent = r.msg || "登录失败"; }
+      })
+      .catch(function (e) { $("#login-err").textContent = e.message || "网络错误"; });
+  });
+  $("#btn-logout").addEventListener("click", function () {
+    api(API + "/logout", { method: "POST" }).then(function () { showLogin(); });
+  });
+  function checkAuth() {
+    api(API + "/me").then(function (r) {
+      var d = r.data || {};
+      if (d.authenticated) showApp(d.username); else showLogin();
+    }).catch(function () { showLogin(); });
+  }
+
+  // ===== 标签切换 =====
+  Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (b) {
+    b.addEventListener("click", function () {
+      Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (x) { x.classList.remove("on"); });
+      b.classList.add("on");
+      ["sites", "maps", "sys"].forEach(function (t) {
+        $("#tab-" + t).classList.toggle("hide", t !== b.dataset.tab);
+      });
+    });
+  });
+
+  // ===== 资源站 =====
+  function loadSites() {
+    api("/api/admin/sites").then(function (r) {
+      renderSites((r.data || {}).sites || []);
+    }).catch(function (e) { $("#sites-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
+  }
+  function renderSites(sites) {
+    if (!sites.length) { $("#sites-box").innerHTML = '<p class="empty">暂无资源站，点击右上角「新增资源站」。</p>'; return; }
+    var h = ["<table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>搜索地址</th><th>分类CID</th><th>状态</th><th>操作</th></tr></thead><tbody>"];
+    sites.forEach(function (s) {
+      h.push("<tr>" +
+        "<td><code class='mono'>" + esc(s.id) + "</code></td>" +
+        "<td>" + esc(s.name) + "</td>" +
+        "<td>" + esc(s.type) + "</td>" +
+        "<td><code class='mono'>" + esc(s.url) + "</code></td>" +
+        "<td>" + esc(s.cid || "-") + "</td>" +
+        "<td>" + (s.enabled ? '<span class="pill on">启用</span>' : '<span class="pill off">停用</span>') + "</td>" +
+        "<td>" +
+          "<button class='btn ghost sm' data-act='edit' data-id='" + esc(s.id) + "'>编辑</button> " +
+          "<button class='btn ghost sm' data-act='toggle' data-id='" + esc(s.id) + "'>" + (s.enabled ? "停用" : "启用") + "</button> " +
+          "<button class='btn danger sm' data-act='del' data-id='" + esc(s.id) + "'>删除</button>" +
+        "</td></tr>");
+    });
+    h.push("</tbody></table>");
+    var box = $("#sites-box"); box.innerHTML = h.join("");
+    box.querySelectorAll("button[data-act]").forEach(function (btn) {
+      var site = sites.filter(function (x) { return x.id === btn.dataset.id; })[0];
+      btn.addEventListener("click", function () {
+        var a = btn.dataset.act;
+        if (a === "edit") openSiteModal("edit", site);
+        else if (a === "toggle") updateSite(site.id, { enabled: !site.enabled });
+        else if (a === "del") { if (confirm("确认删除资源站 " + site.name + " ?")) delSite(site.id); }
+      });
+    });
+  }
+  function updateSite(id, body) {
+    api("/api/admin/site/" + encodeURIComponent(id), { method: "PUT", body: body })
+      .then(function (r) { toast(r.code === 200 ? "已更新" : (r.msg || "失败")); loadSites(); });
+  }
+  function delSite(id) {
+    api("/api/admin/site/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function (r) { toast(r.code === 200 ? "已删除" : (r.msg || "失败")); loadSites(); });
+  }
+
+  // 新增 / 编辑弹窗
+  function openSiteModal(mode, site) {
+    site = site || {};
+    var isEdit = mode === "edit";
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal"><h3>' + (isEdit ? "编辑资源站" : "新增资源站") + "</h3>" +
+      '<div class="grid">' +
+      '<div class="field"><label>名称 *</label><input id="m-name" value="' + esc(site.name) + '"></div>' +
+      (isEdit ? "" : '<div class="field"><label>类型</label><select id="m-type" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px"><option value="applecms">applecms</option><option value="html">html</option></select></div>') +
+      '<div class="field full"><label>搜索地址 *（用 {keyword} 占位）</label><input id="m-url" value="' + esc(site.url) + '"></div>' +
+      '<div class="field full"><label>详情地址（用 {id} 占位）</label><input id="m-detail" value="' + esc(site.detail_url) + '"></div>' +
+      '<div class="field"><label>分类 CID（逗号分隔）</label><input id="m-cid" value="' + esc(site.cid) + '"></div>' +
+      '<div class="field"><label>启用</label><select id="m-enabled" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px">' +
+        '<option value="1"' + (site.enabled === false ? "" : " selected") + '>启用</option><option value="0"' + (site.enabled === false ? " selected" : "") + ">停用</option></select></div>" +
+      "</div><footer>" +
+      '<button class="btn ghost" id="m-cancel">取消</button>' +
+      '<button class="btn primary" id="m-save">保存</button>' +
+      "</footer></div></div>";
+
+    $("#m-cancel").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#m-save").onclick = function () {
+      var body = {
+        name: $("#m-name").value.trim(),
+        url: $("#m-url").value.trim(),
+        detail_url: $("#m-detail").value.trim(),
+        cid: $("#m-cid").value.trim(),
+        enabled: $("#m-enabled").value === "1"
+      };
+      if (!body.name || !body.url) { toast("名称与搜索地址必填"); return; }
+      if (isEdit) {
+        updateSite(site.id, { name: body.name, url: body.url, detail_url: body.detail_url, cid: body.cid, enabled: body.enabled });
+      } else {
+        body.type = $("#m-type").value;
+        api("/api/admin/site", { method: "POST", body: body })
+          .then(function (r) { toast(r.code === 200 ? "已添加" : (r.msg || "失败")); loadSites(); });
+      }
+      $("#modal-root").innerHTML = "";
+    };
+  }
+  $("#btn-add-site").onclick = function () { openSiteModal("add", {}); };
+  $("#btn-refresh-sites").onclick = loadSites;
+
+  // 苹果CMS 自动分析
+  $("#btn-auto").onclick = function () {
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal"><h3>苹果CMS 自动分析</h3>' +
+      '<div class="field"><label>接口地址（api.php/provide/vod）</label><input id="a-url" placeholder="http://xxx/api.php/provide/vod"></div>' +
+      '<div class="field"><label>资源站名称（留空自动命名）</label><input id="a-name"></div>' +
+      '<footer><button class="btn ghost" id="a-cancel">取消</button><button class="btn primary" id="a-go">开始分析</button></footer>' +
+      '<div id="a-result" style="margin-top:16px"></div>' +
+      "</div></div>";
+    $("#a-cancel").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#a-go").onclick = function () {
+      var url = $("#a-url").value.trim();
+      if (!url) { toast("请输入接口地址"); return; }
+      $("#a-result").innerHTML = "分析中...";
+      api("/api/admin/site/auto", { method: "POST", body: { url: url, name: $("#a-name").value.trim() } })
+        .then(function (r) {
+          if (r.code !== 200) { $("#a-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+          var d = r.data || {}, s = d.site || {}, cids = d.cids || [];
+          $("#a-result").innerHTML =
+            "<p class='empty'>识别到资源站：<b>" + esc(s.name) + "</b>，分类 " + cids.length + " 个</p>" +
+            "<textarea rows='6' readonly>" + esc(JSON.stringify(cids, null, 2)) + "</textarea>" +
+            '<div style="margin-top:12px"><button class="btn primary" id="a-save">保存为资源站</button></div>';
+          $("#a-save").onclick = function () {
+            api("/api/admin/site", { method: "POST", body: {
+              name: s.name, type: s.type || "applecms", url: s.url, detail_url: s.detail_url,
+              encode: s.encode || "utf8", cid: s.cid || "", enabled: true
+            }}).then(function (rr) {
+              toast(rr.code === 200 ? "已保存" : (rr.msg || "失败"));
+              if (rr.code === 200) { $("#modal-root").innerHTML = ""; loadSites(); }
+            });
+          };
+        })
+        .catch(function (e) { $("#a-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    };
+  };
+
+  // ===== 映射 =====
+  function loadMaps() {
+    api("/api/admin/mappings").then(function (r) {
+      var d = r.data || {};
+      renderMaps(d.mappings || [], d.sites || []);
+    }).catch(function (e) { $("#maps-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
+  }
+  function renderMaps(maps, sites) {
+    if (!maps.length) { $("#maps-box").innerHTML = '<p class="empty">暂无映射。</p>'; return; }
+    var h = [];
+    maps.forEach(function (m, idx) {
+      var checks = sites.map(function (s) {
+        var on = (m.sites || []).indexOf(s.id) >= 0;
+        return '<label><input type="checkbox" data-map="' + idx + '" value="' + esc(s.id) + '"' + (on ? " checked" : "") + ">" + esc(s.name) + ' <code class="mono">' + esc(s.id) + "</code></label>";
+      }).join("");
+      h.push('<div class="maprow"><div class="off">' + esc(m.official) + "</div>" +
+        '<div class="checks">' + (checks || '<span class="empty">请先添加资源站</span>') + "</div>" +
+        '<button class="btn primary sm" data-savemap="' + idx + '" data-official="' + esc(m.official) + '">保存</button></div>');
+    });
+    $("#maps-box").innerHTML = h.join("");
+    $("#maps-box").querySelectorAll("button[data-savemap]").forEach(function (btn) {
+      btn.onclick = function () {
+        var idx = btn.dataset.savemap;
+        var ids = Array.prototype.filter.call(
+          $("#maps-box").querySelectorAll('input[data-map="' + idx + '"]'),
+          function (c) { return c.checked; }
+        ).map(function (c) { return c.value; });
+        api("/api/admin/mapping", { method: "POST", body: { site: btn.dataset.official, sites: ids } })
+          .then(function (r) { toast(r.code === 200 ? "映射已保存" : (r.msg || "失败")); });
+      };
+    });
+  }
+  $("#btn-refresh-maps").onclick = loadMaps;
+
+  // ===== 系统 =====
+  $("#btn-reload").onclick = function () {
+    api("/api/admin/reload", { method: "POST" })
+      .then(function (r) { toast(r.code === 200 ? "配置已重载" : (r.msg || "失败")); loadSites(); loadMaps(); });
+  };
+  $("#btn-update").onclick = function () {
+    $("#update-msg").textContent = "正在检查更新...";
+    api("/api/update", { method: "POST" })
+      .then(function (r) { $("#update-msg").textContent = r.msg || ""; toast(r.msg || "完成"); })
+      .catch(function (e) { $("#update-msg").textContent = e.message || "失败"; });
+  };
+
+  checkAuth();
+})();
+</script>
+</body>
+</html>

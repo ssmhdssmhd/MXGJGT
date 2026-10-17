@@ -1,7 +1,7 @@
 # MXGJGT
 
 > **MXGJGT** 是一个基于 Go + Gin 开发的视频链接清洗 / 伪装后端服务。
-> 访问域名返回伪装 404 页面（`{"code":404,"msg":"页面未找到"}`），只有命中隐藏路由 `/api/clean/` 才会进入真实 API。输入腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / B站 等官方链接，自动解析影视名 + 集数（**官替**），并从配置的资源站中匹配、输出**替换后的播放地址**；解析失败时可传 `wd` / `episode` 直接指定剧名与集数。
+> 访问域名返回伪装 404 页面（`{"code":404,"msg":"页面未找到"}`），只有命中隐藏路由 `/api/clean/` 才会进入真实 API。输入腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / B站 等官方链接，自动解析影视名 + 集数（**官替**），并从配置的资源站中匹配、输出**替换后的播放地址**；解析失败时可传 `wd` / `episode` 直接指定剧名与集数。另提供网页后台 `/mx/`，登录后可可视化管理资源站、平台映射与在线更新。
 
 ---
 
@@ -14,9 +14,10 @@
 | 🎬 影视名 + 集数提取 | 支持从 URL 和官方页面 HTML meta 双重提取 |
 | 🖥️ 官替（官方资源替换） | 官方链接 → 解析剧名+集数 → 资源站匹配 → 输出替换播放地址 |
 | 🔄 三层降级方案 | 方案1 无头浏览器渲染（主）→ 方案2 客户端传参 → 方案3 参数提示（保底） |
-| 🛠️ 自动更新 | Cron 定时 + 国内镜像测速 + git pull + go build |
+| 🖥️ 网页后台 | 域名 `/mx/` 登录后可视化管理资源站 / 平台映射 / 在线更新 |
+| 🛠️ 自动更新 | 查 GitHub Releases → 下载对应平台二进制 → 原子替换 → 自重启 |
 | ⚙️ 配置化 | YAML 配置文件，资源站列表独立配置 |
-| 🔐 API Key | 手动更新接口可选密钥保护 |
+| 🔐 API Key | 手动更新接口可选密钥保护；后台管理接口需登录 |
 
 ---
 
@@ -74,13 +75,31 @@ curl http://127.0.0.1:9991/api/clean/
 curl "http://127.0.0.1:9991/api/clean/?url=https%3A%2F%2Fwww.iqiyi.com%2Fa_1fkgtbddd2x.html"
 
 # 方案2 - 客户端直接传参
-curl "http://127.0.0.1:9991/api/clean/?wd=%E7%8B%82%E9%A3%8B&episode=%E7%AC%AC5%E9%9B%9F"
+curl "http://127.0.0.1:9991/api/clean/?wd=%E7%8B%82%E9%A3%99&episode=%E7%AC%AC5%E9%9B%86"
 
 # 版本
 curl http://127.0.0.1:9991/api/version
 ```
 
 > 无头浏览器内核可通过环境变量指定：`MXGJGT_CHROME=/path/to/chrome-headless-shell ./mxgjgt`
+
+---
+
+## 🖥️ 网页后台（/mx/）
+
+浏览器访问 `http://<域名>:9991/mx/` 即进入登录页，登录后可视化维护资源站、平台映射与系统更新，无需再用 curl。
+
+| 功能 | 说明 |
+|---|---|
+| 🔐 登录 | 默认账号 `admin` / `mxgjgt`（见下方 `admin` 配置，**请务必修改**） |
+| 📡 资源站管理 | 列表 / 新增 / 编辑 / 启用停用 / 删除，含「苹果CMS 自动分析」 |
+| 🔗 平台映射 | 勾选每个官方平台优先使用的资源站 |
+| ⚙️ 系统 | 查看版本 / 构建时间 / 仓库，重载配置、检查并更新 |
+
+- 登录态由 Cookie 会话维持，有效期 `admin.session_hours` 小时
+- `/api/admin/*` 全部要求登录后访问，未登录返回 `401`
+- `admin.enabled: false` 时 `/mx/` 与 `/api/admin/*` 统一返回伪装 `404`
+- 后台页面位于 [handler/mxadmin.html](handler/mxadmin.html)，登录鉴权见 [handler/adminauth.go](handler/adminauth.go)
 
 ---
 
@@ -147,9 +166,13 @@ curl http://127.0.0.1:9991/api/version
 
 ### `POST /api/update`
 
-手动触发更新（需要在 `config.yaml` 的 `security.api_key` 设置后携带 `X-API-Key` 或 `?key=`）。
+手动触发更新：拉取 GitHub Releases 最新版本 → 下载对应平台二进制 → 原子替换 → 自重启。
+
+已登录网页后台时免鉴权；否则需在 `security.api_key` 设值后携带 `X-API-Key` 或 `?key=`。
 
 ### 后台管理 `/api/admin/*`
+
+> 以下接口均需先在网页后台（`/mx/`）登录，未登录返回 `401`；`admin.enabled: false` 时统一返回伪装 `404`。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -171,7 +194,9 @@ MXGJGT/
 ├── main.go                 # 入口
 ├── handler/                # HTTP 路由
 │   ├── api.go              # 核心接口（clean/search/version/update）
-│   ├── admin.go            # 后台管理（资源站 / 映射 CRUD）
+│   ├── admin.go            # 后台管理 API（资源站 / 映射 CRUD）
+│   ├── adminauth.go        # 网页后台登录鉴权 + 会话
+│   ├── mxadmin.html        # 网页后台页面（登录 + 管理界面）
 │   └── version.go          # 版本兼容导出
 ├── service/                # 业务逻辑
 │   ├── parser.go           # 官方网站识别 + 影视名/集数提取
@@ -180,7 +205,7 @@ MXGJGT/
 │   ├── resource.go         # 资源站搜索 + 苹果CMS 采集
 │   ├── acms.go             # 苹果CMS 接口自动分析
 │   ├── cache.go            # 搜索结果缓存
-│   └── updater.go          # 自动更新（镜像测速 + git pull）
+│   └── updater.go          # 自动更新（GitHub Releases 下载 + 原子替换 + 自重启）
 ├── config/
 │   └── config.go           # 配置加载 / 热加载 / 持久化
 ├── model/
@@ -223,6 +248,14 @@ updater:
 security:
   api_key: ""                # 设值后 /api/update 需鉴权
 
+# 网页后台（浏览器访问 http://<域名>:9991/mx/ 进入登录页）
+admin:
+  enabled: true              # 关闭后 /mx/ 与 /api/admin/* 均走伪装 404
+  path: "/mx"                # 后台入口路径
+  username: "admin"          # 登录用户名
+  password: "mxgjgt"         # 登录密码（请务必修改）
+  session_hours: 24          # 登录态有效期（小时）
+
 # 无头浏览器渲染（方案1 主方案）
 browser:
   enabled: true              # 总开关；未配置时默认启用
@@ -250,13 +283,12 @@ browser:
 
 ## 🔄 自动更新机制
 
-1. **Cron 调度**：按 `config.yaml` 的 `updater.interval` 定时执行
-2. **镜像测速**：并行 `git ls-remote` 测试所有镜像速度，选最快的
-3. **Git Pull**：使用最优镜像 URL 执行 `git pull`
-4. **重新编译**：`go build -o mxgjgt .`（使用 `goproxy.cn` 国内代理）
-5. **手动触发**：`POST /api/update`（加 API Key 鉴权）
-
-> 当前环境 Git 仓库需要先 clone 再 pull，或在已有仓库目录中运行。
+1. **Cron 调度**：`updater.enabled: true` 时按 `interval` 定时执行
+2. **查最新版**：调用 GitHub Releases API，比对当前 `model.Version`
+3. **下载产物**：按当前 `GOOS/GOARCH` 选对应二进制，可走 `updater.mirrors` 镜像加速
+4. **原子替换**：旧文件改名为 `.bak`，新文件落位并 `chmod 0755`
+5. **自重启**：执行新二进制并退出旧进程
+6. **手动触发**：`POST /api/update`（登录网页后台免鉴权，否则需 API Key）
 
 ---
 
@@ -265,7 +297,7 @@ browser:
 推送 `v*` tag 或手动触发 `Release` 工作流，即可在云端构建并发布多平台产物：
 
 ```bash
-git tag v0.0.5 && git push origin v0.0.5
+git tag v0.0.6 && git push origin v0.0.6
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`

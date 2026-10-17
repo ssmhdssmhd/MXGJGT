@@ -42,23 +42,23 @@ type VideoSite struct {
 
 // ResourceSite 资源站配置
 type ResourceSite struct {
-	ID        string `yaml:"id"`                   // 唯一 ID（后台管理用）
-	Name      string `yaml:"name"`
-	Type      string `yaml:"type"`                 // applecms / html
-	URL       string `yaml:"url"`                  // 搜索 URL，{keyword} 占位符
-	DetailURL string `yaml:"detail_url"`           // 详情 URL，{id} 占位符
-	Encode    string `yaml:"encode"`
-	Selector  string `yaml:"selector"`
-	TitleAttr string `yaml:"title_attr"`
-	LinkAttr  string `yaml:"link_attr"`
-	CID       string `yaml:"cid"`                  // 苹果CMS分类ID映射（逗号分隔）
-	Enabled   bool   `yaml:"enabled"`
+	ID        string `yaml:"id" json:"id"`                   // 唯一 ID（后台管理用）
+	Name      string `yaml:"name" json:"name"`
+	Type      string `yaml:"type" json:"type"`                 // applecms / html
+	URL       string `yaml:"url" json:"url"`                  // 搜索 URL，{keyword} 占位符
+	DetailURL string `yaml:"detail_url" json:"detail_url"`     // 详情 URL，{id} 占位符
+	Encode    string `yaml:"encode" json:"encode"`
+	Selector  string `yaml:"selector" json:"selector"`
+	TitleAttr string `yaml:"title_attr" json:"title_attr"`
+	LinkAttr  string `yaml:"link_attr" json:"link_attr"`
+	CID       string `yaml:"cid" json:"cid"`                  // 苹果CMS分类ID映射（逗号分隔）
+	Enabled   bool   `yaml:"enabled" json:"enabled"`
 }
 
 // SiteMapping 官方视频站 → 资源站 映射
 type SiteMapping struct {
-	Official string   `yaml:"official"` // 官方站点中文名
-	Sites    []string `yaml:"sites"`    // 优先使用的资源站 ID 列表
+	Official string   `yaml:"official" json:"official"` // 官方站点中文名
+	Sites    []string `yaml:"sites" json:"sites"`       // 优先使用的资源站 ID 列表
 }
 
 // SearchResult 资源站搜索结果
@@ -86,6 +86,7 @@ type AppConfig struct {
 	Updater  UpdaterConfig  `yaml:"updater"`
 	Security SecurityConfig `yaml:"security"`
 	Browser  BrowserConfig  `yaml:"browser"`
+	Admin    AdminConfig    `yaml:"admin"`
 }
 
 type ServerConfig struct {
@@ -112,6 +113,15 @@ type BrowserConfig struct {
 	Enabled    bool   `yaml:"enabled"`     // 总开关；未配置时默认启用
 	ChromePath string `yaml:"chrome_path"` // Chrome/Chromium 可执行文件路径，留空自动探测
 	TimeoutSec int    `yaml:"timeout_sec"` // 单次渲染超时秒数，默认 20
+}
+
+// AdminConfig 网页后台（/mx/）配置
+type AdminConfig struct {
+	Enabled      bool   `yaml:"enabled"`       // 是否启用网页后台；关闭后 /mx/ 与 /api/admin/* 走伪装 404
+	Path         string `yaml:"path"`          // 后台入口路径，默认 /mx
+	Username     string `yaml:"username"`      // 登录用户名
+	Password     string `yaml:"password"`      // 登录密码（明文，请务必修改默认值）
+	SessionHours int    `yaml:"session_hours"` // 登录态有效期（小时），默认 24
 }
 
 // ======== 苹果CMS 接口专用 ========

@@ -169,6 +169,22 @@ func applyDefaults(cfg *model.AppConfig) {
 	if !cfg.Browser.Enabled && cfg.Browser.ChromePath == "" {
 		cfg.Browser.Enabled = true
 	}
+	// 网页后台（/mx/）：配置段整体缺失时默认启用，并套用默认账号
+	if cfg.Admin.Path == "" && cfg.Admin.Username == "" && cfg.Admin.Password == "" {
+		cfg.Admin.Enabled = true
+	}
+	if cfg.Admin.Path == "" {
+		cfg.Admin.Path = "/mx"
+	}
+	if cfg.Admin.Username == "" {
+		cfg.Admin.Username = "admin"
+	}
+	if cfg.Admin.Password == "" {
+		cfg.Admin.Password = "mxgjgt"
+	}
+	if cfg.Admin.SessionHours <= 0 {
+		cfg.Admin.SessionHours = 24
+	}
 }
 
 func defaultConfig() *model.AppConfig {
@@ -177,6 +193,7 @@ func defaultConfig() *model.AppConfig {
 		Updater:  model.UpdaterConfig{Enabled: false, Interval: "0 0 3 * * *", Branch: "main"},
 		Security: model.SecurityConfig{},
 		Browser:  model.BrowserConfig{Enabled: true, TimeoutSec: 20},
+		Admin:    model.AdminConfig{Enabled: true, Path: "/mx", Username: "admin", Password: "mxgjgt", SessionHours: 24},
 	}
 }
 
@@ -202,7 +219,7 @@ func randomID() string {
 
 func defaultConfigYAML() string {
 	return `# =============================================
-#  MXGJGT v0.0.5  — 主配置
+#  MXGJGT v0.0.6  — 主配置
 #  所有配置修改后调用 POST /api/admin/reload 热加载
 # =============================================
 
@@ -221,6 +238,16 @@ updater:
 
 security:
   api_key: ""
+
+# 网页后台（登录后可在浏览器管理资源站 / 映射 / 更新）
+# 访问 http://<域名>:9991/mx/  → 登录页
+# 关闭 enabled 后 /mx/ 与 /api/admin/* 均走伪装 404
+admin:
+  enabled: true
+  path: "/mx"          # 后台入口路径
+  username: "admin"    # 登录用户名
+  password: "mxgjgt"   # 登录密码（务必修改）
+  session_hours: 24    # 登录态有效期（小时）
 
 # 无头浏览器渲染（方案1 主方案）
 # 从官方页面渲染抓取剧名+集数，覆盖爱奇艺/优酷/芒果等对后端强反爬的站点
