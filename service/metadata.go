@@ -133,6 +133,18 @@ func stripDoubanSuffix(t string) string {
 func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 	host := u.Host
 	path := u.Path
+	raw := u.String()
+
+	// fallback 统一入口 — 命中 HTML/豆瓣 时顺便回写 cover_id 字典
+	fallbackOK := func(t, e, src string) (string, string, string) {
+		// 异步自动写入（仅首次、不覆盖人工修正）
+		go func() {
+			if AutoLearnFromFallback(raw, t) {
+				// 写入成功，字典已经热更新
+			}
+		}()
+		return t, e, src
+	}
 
 	// 1. B站 — 直接调 BV 号
 	if strings.Contains(host, "bilibili.com") || strings.Contains(host, "b23.tv") {
@@ -144,13 +156,13 @@ func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 	}
 
 	// 2. 本地 cover_id 字典命中 —— 最稳的一层，0 网络依赖
-	if dictTitle, _, hit := LookupCoverID(u.String()); hit && !isSuspiciousTitle(dictTitle) {
+	if dictTitle, _, hit := LookupCoverID(raw); hit && !isSuspiciousTitle(dictTitle) {
 		return dictTitle, "", "cover-id-dict"
 	}
 
 	// 3. 尝试 HTML og:title / meta (对非反爬站有效)
-	if htmlTitle, htmlEp := fetchTitleFromPage(u.String()); isGoodTitle(htmlTitle) {
-		return htmlTitle, htmlEp, "html-meta"
+	if htmlTitle, htmlEp := fetchTitleFromPage(raw); isGoodTitle(htmlTitle) {
+		return fallbackOK(htmlTitle, htmlEp, "html-meta")
 	}
 
 	// 4. 从 URL path 里找所有可能的 segment，去豆瓣逐个搜
@@ -161,22 +173,22 @@ func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 		}
 		candidates := SearchDouban(seg)
 		if best := PickBestDouban(seg, candidates); best != "" {
-			return best, "", "douban-search"
+			return fallbackOK(best, "", "douban-search")
 		}
 	}
 
-	// 4. URL query 里所有非空参数值都试一遍
+	// 5. URL query 里所有非空参数值都试一遍
 	q := u.Query()
 	for _, k := range []string{"wd", "keyword", "q", "name", "title", "series", "cover", "coverName", "series_name"} {
 		if v := q.Get(k); v != "" && !isSuspiciousTitle(v) {
 			candidates := SearchDouban(v)
 			if best := PickBestDouban(v, candidates); best != "" {
-				return best, "", "douban-search-query"
+				return fallbackOK(best, "", "douban-search-query")
 			}
 		}
 	}
 
-	// 5. 实在不行，把所有非 ID 的 path segment 拼起来当关键词试
+	// 6. 实在不行，把所有非 ID 的 path segment 拼起来当关键词试
 	var meaningful []string
 	for _, seg := range strings.Split(strings.Trim(path, "/"), "/") {
 		if !isIDLike(seg) && len(seg) >= 2 {
@@ -188,7 +200,7 @@ func ResolveOfficialTitle(u *url.URL) (title, episode, source string) {
 		if !isSuspiciousTitle(combined) {
 			candidates := SearchDouban(combined)
 			if best := PickBestDouban(combined, candidates); best != "" {
-				return best, "", "douban-search-combined"
+				return fallbackOK(best, "", "douban-search-combined")
 			}
 		}
 	}

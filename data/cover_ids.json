@@ -1,11 +1,16 @@
 {
+  "_meta": {
+    "version": "1.1",
+    "updated_at": "2026-10-17T00:45:00Z",
+    "notes": "v1.1 修复: 腾讯兜底pattern漏\\、优酷/搜狐base64url漏=、爱奇艺缺qy.com/detail 支持；自动学习fallback命中回写cover_id"
+  },
   "腾讯视频": {
     "hosts": ["v.qq.com", "film.qq.com", "video.qq.com", "m.v.qq.com"],
     "patterns": [
       "/x/cover/([a-zA-Z0-9]+)",
       "/cover/([a-zA-Z0-9]+)",
       "vid=([a-zA-Z0-9]+)",
-      "/([a-zA-Z0-9]{6,})\\.html"
+      "([a-zA-Z0-9]{6,})\\.html"
     ],
     "ids": {
       "abc123": "庆余年",
@@ -33,9 +38,10 @@
   "爱奇艺": {
     "hosts": ["iqiyi.com", "www.iqiyi.com", "m.iqiyi.com", "v.iqiyi.com", "qy.com"],
     "patterns": [
-      "/v_([a-zA-Z0-9]+)",
-      "/play/([a-zA-Z0-9]+)",
-      "vid=([a-zA-Z0-9]+)",
+      "/v_(\\d+)",
+      "/play/(\\d+)",
+      "/detail/(\\d+)",
+      "vid=(\\d+)",
       "aid=(\\d+)"
     ],
     "ids": {
@@ -53,9 +59,9 @@
   "优酷": {
     "hosts": ["youku.com", "www.youku.com", "v.youku.com", "m.youku.com"],
     "patterns": [
-      "id_([a-zA-Z0-9]+)",
-      "/v_show/id_([a-zA-Z0-9]+)",
-      "vid=([a-zA-Z0-9]+)"
+      "id_([A-Za-z0-9=_-]+)",
+      "/v_show/id_([A-Za-z0-9=_-]+)",
+      "vid=([A-Za-z0-9=_-]+)"
     ],
     "ids": {
       "XMzg0NjA1Mzc2OA==": "庆余年",
@@ -87,7 +93,7 @@
   "搜狐视频": {
     "hosts": ["tv.sohu.com", "sohu.com"],
     "patterns": [
-      "/v/([a-zA-Z0-9]+)",
+      "/v/([A-Za-z0-9=_-]+)",
       "vid=(\\d+)",
       "aid=(\\d+)"
     ],

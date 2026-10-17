@@ -1,3 +1,70 @@
+MXGJGT v0.0.5 202610170050
+===========================
+
+## 字典自动优化 — pattern 修复 + fallback 回写 + 元数据
+
+### 🎯 自动优化核心能力
+
+1. **Pattern 5 处 bug 修复（16 官方 URL → 14 字典命中，修复前 9 命中）**
+   | 平台 | 问题 | 修复 |
+   |---|---|---|
+   | 腾讯视频 | 兜底 pattern `\\.html` 双转义 Go 编译失败 | `([a-zA-Z0-9]{6,})\.html` |
+   | 爱奇艺 | 缺 qy.com 短链 `/detail/\d+` pattern | 新增 `/detail/(\d+)` + `vid` 限数字 |
+   | 优酷 | `id_([a-zA-Z0-9]+)` 漏 base64url 的 `=` | 改为 `[A-Za-z0-9=_-]+` |
+   | 优酷 vid query | 同上 | 同上 |
+   | 搜狐视频 | `/v/([a-zA-Z0-9]+)` 漏 base64url 的 `=` | 改为 `[A-Za-z0-9=_-]+` |
+
+2. **Auto-Learn 自动回写：解析链命中 fallback 时自动写入字典**
+   - ResolveOfficialTitle 新增 `fallbackOK()` 闭包：HTML/豆瓣 命中后异步调用 `AutoLearnFromFallback`
+   - 流程：URL → host 反查平台 → pattern 抠 cover_id → `SaveCoverIDIfAbsent` 仅首次写入
+   - 安全机制：已存在的 cover_id **绝不覆盖**（保护人工修正）
+   - 生产效果：用户首次请求某官方 URL 时，从 HTML/豆瓣 fallback 拿到剧名，自动把 cover_id + 剧名 存入字典 → 下次同 URL 直接字典命中（0 网络依赖）
+
+3. **dict v1.1 元数据**
+   - `data/cover_ids.json` 根加 `_meta` 字段（version/updated_at/notes）
+   - InitCoverIDDict 自动过滤 `_meta`（不算平台、不暴露给 API）
+   - 所有 pattern 与 Go 端 `defaultCoverIDDict()` 骨架保持同步
+
+### 📊 审计结果（修复前 vs 修复后）
+
+```
+修复前: 9/16 字典命中（腾讯兜底失效、优酷/搜狐 base64url 全截断、爱奇艺 qy.com miss）
+修复后: 14/16 字典命中，剩余 2 个（搜狐新 vid / B站 av 号）→ AutoLearn 自动补入
+
+✅ 腾讯视频      v.qq.com/x/cover/mzc0020053q73k.html → 狂飙
+✅ 腾讯视频      film.qq.com?vid=mzc0020053q73k → 狂飙
+✅ 爱奇艺        iqiyi.com/v_25217847.html → 狂飙
+✅ 爱奇艺        qy.com/detail/25217847.html → 狂飙（新支持）
+✅ 优酷          youku.com/v_show/id_XMzg0NjA1Mzc2OA==.html → 庆余年（截断修复）
+✅ 搜狐          tv.sohu.com?vid=9278162 → 庆余年
+✅ B站           bilibili.com/video/BV1n4411p7Fh → 狂飙
+⚠️ 搜狐新 vid    tv.sohu.com/v/MzA5Njk4Mg==.html → AutoLearn 自动补入
+⚠️ B站 av 号     bilibili.com/video/av170001 → AutoLearn 自动补入
+```
+
+### 🧪 AutoLearn 行为验证
+
+```
+优化前: 搜狐 MzA5Njk4Mg== → 字典 4 条
+调用   AutoLearnFromFallback(新 URL, "庆余年") → true（新写入）
+优化后: 搜狐 MzA5Njk4Mg== → 字典 5 条  ✅
+二次调用: AutoLearnFromFallback(同一个, "庆余年") → false（已存在跳过，保护人工修正）✅
+二次解析: LookupCoverID 命中 title="庆余年"  ✅
+```
+
+### 📁 变更文件
+
+```
+modified: data/cover_ids.json          # v1.1 pattern 全修复 + _meta 元数据
+modified: service/coverid_dict.go      # 新增 DetectPlatformByHost / ExtractCoverIDFromURL / SaveCoverIDIfAbsent / AutoLearnFromFallback
+                                       # + defaultCoverIDDict pattern 同步修复 + _meta 过滤
+modified: service/metadata.go          # ResolveOfficialTitle 加 fallbackOK → AutoLearnFromFallback
+modified: model/version.go             # 0.0.4 → 0.0.5
+modified: update.log                   # 新增 v0.0.5 置顶
+```
+
+---
+
 MXGJGT v0.0.4 202610170020
 ===========================
 

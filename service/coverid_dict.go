@@ -85,6 +85,11 @@ func InitCoverIDDict(dataDir string) error {
 	}
 
 	for k, v := range d {
+		// 跳过文件元信息（不是真实平台）
+		if k == "_meta" {
+			delete(d, k)
+			continue
+		}
 		if v == nil {
 			d[k] = &CoverIDPlatform{IDs: map[string]string{}}
 		}
@@ -216,6 +221,128 @@ func compilePatternStrings(list []string) []*regexp.Regexp {
 	return out
 }
 
+// ============== 自动学习（fallback 命中后回写） ==============
+
+// DetectPlatformByHost 从 host 反查平台名（host 没命中返回 ""）
+func DetectPlatformByHost(host string) string {
+	coverIDMu.RLock()
+	defer coverIDMu.RUnlock()
+	if coverIDDict == nil {
+		return ""
+	}
+	host = strings.ToLower(host)
+	for name, plat := range coverIDDict {
+		if plat == nil {
+			continue
+		}
+		for _, h := range plat.Hosts {
+			h = strings.ToLower(h)
+			if h != "" && (host == h || strings.HasSuffix(host, "."+h) || strings.Contains(host, h)) {
+				return name
+			}
+		}
+	}
+	return ""
+}
+
+// ExtractCoverIDFromURL 从 URL 里按 host 匹配的平台抠 cover_id
+// 返回: 平台名 / cover_id (任意一个空串 = 抠失败)
+func ExtractCoverIDFromURL(rawURL string) (platform, coverID string) {
+	coverIDMu.RLock()
+	defer coverIDMu.RUnlock()
+	if coverIDDict == nil {
+		return "", ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", ""
+	}
+	host := strings.ToLower(u.Host)
+	for name, plat := range coverIDDict {
+		if plat == nil {
+			continue
+		}
+		for _, h := range plat.Hosts {
+			h = strings.ToLower(h)
+			if h != "" && (host == h || strings.HasSuffix(host, "."+h) || strings.Contains(host, h)) {
+				if cid := extractCoverIDUnlocked(plat, u); cid != "" {
+					return name, cid
+				}
+				return name, ""
+			}
+		}
+	}
+	return "", ""
+}
+
+// extractCoverIDUnlocked — 不加锁版本（内部用）
+func extractCoverIDUnlocked(plat *CoverIDPlatform, u *url.URL) string {
+	if plat == nil {
+		return ""
+	}
+	patterns, ok := coverIDCompiled[plat.hostKey()]
+	if !ok {
+		patterns = compilePatternStrings(plat.Patterns)
+	}
+	haystacks := []string{u.Path, u.RawQuery, u.String()}
+	for _, re := range patterns {
+		for _, hay := range haystacks {
+			if m := re.FindStringSubmatch(hay); len(m) >= 2 {
+				return strings.TrimSpace(m[1])
+			}
+		}
+	}
+	return ""
+}
+
+// SaveCoverIDIfAbsent 仅当 cover_id 在字典里还没收录时写入
+// 保护人工修正不被覆盖；返回 true=本次是新写入，false=已存在被跳过
+func SaveCoverIDIfAbsent(platform, coverID, title string) (bool, error) {
+	platform = strings.TrimSpace(platform)
+	coverID = strings.TrimSpace(coverID)
+	title = strings.TrimSpace(title)
+	if platform == "" || coverID == "" || title == "" {
+		return false, nil
+	}
+
+	coverIDMu.Lock()
+	defer coverIDMu.Unlock()
+
+	if coverIDDict == nil {
+		coverIDDict = defaultCoverIDDict()
+	}
+	if coverIDDict[platform] == nil {
+		coverIDDict[platform] = &CoverIDPlatform{IDs: map[string]string{}}
+	}
+	plat := coverIDDict[platform]
+	if _, exists := plat.IDs[coverID]; exists {
+		return false, nil // 已存在，跳过
+	}
+	plat.IDs[coverID] = title
+	if err := saveCoverIDDictUnlocked(coverIDDict); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AutoLearnFromFallback 解析链靠 fallback (HTML/豆瓣) 命中剧名后调用
+// 功能: 从 URL 抠 cover_id → 反查平台 → 若字典没收录则自动写入
+// 返回: 本次是否成功写入
+func AutoLearnFromFallback(rawURL, title string) bool {
+	if rawURL == "" || title == "" {
+		return false
+	}
+	if !strings.HasPrefix(rawURL, "http") {
+		rawURL = "https://" + rawURL
+	}
+	platform, coverID := ExtractCoverIDFromURL(rawURL)
+	if platform == "" || coverID == "" {
+		return false
+	}
+	ok, _ := SaveCoverIDIfAbsent(platform, coverID, title)
+	return ok
+}
+
 // ============== 管理：增删改查 ==============
 
 // ListCoverIDStats 所有平台统计
@@ -335,19 +462,20 @@ func defaultCoverIDDict() CoverIDDict {
 		"腾讯视频": {
 			Hosts: []string{"v.qq.com", "film.qq.com", "video.qq.com", "m.v.qq.com"},
 			Patterns: []string{
-				`/x/cover/([a-zA-Z0-9]+)`,          // /x/cover/abc123.html
-				`/cover/([a-zA-Z0-9]+)`,              // 通用兜底
-				`vid=([a-zA-Z0-9]+)`,                 // query 里的 vid
-				`/([a-zA-Z0-9]{6,})\.html`,           // path 兜底长串
+				`/x/cover/([a-zA-Z0-9]+)`,
+				`/cover/([a-zA-Z0-9]+)`,
+				`vid=([a-zA-Z0-9]+)`,
+				`([a-zA-Z0-9]{6,})\.html`,
 			},
 			IDs: map[string]string{},
 		},
 		"爱奇艺": {
 			Hosts: []string{"iqiyi.com", "www.iqiyi.com", "m.iqiyi.com", "v.iqiyi.com", "qy.com"},
 			Patterns: []string{
-				`/v_([a-zA-Z0-9]+)`,                  // /v_abc123.html
-				`/play/([a-zA-Z0-9]+)`,
-				`vid=([a-zA-Z0-9]+)`,
+				`/v_(\d+)`,
+				`/play/(\d+)`,
+				`/detail/(\d+)`,
+				`vid=(\d+)`,
 				`aid=(\d+)`,
 			},
 			IDs: map[string]string{},
@@ -355,16 +483,16 @@ func defaultCoverIDDict() CoverIDDict {
 		"优酷": {
 			Hosts: []string{"youku.com", "www.youku.com", "v.youku.com", "m.youku.com"},
 			Patterns: []string{
-				`id_([a-zA-Z0-9]+)`,                  // id_XQ==.html
-				`/v_show/id_([a-zA-Z0-9]+)`,
-				`vid=([a-zA-Z0-9]+)`,
+				`id_([A-Za-z0-9=_-]+)`,
+				`/v_show/id_([A-Za-z0-9=_-]+)`,
+				`vid=([A-Za-z0-9=_-]+)`,
 			},
 			IDs: map[string]string{},
 		},
 		"芒果TV": {
 			Hosts: []string{"mgtv.com", "www.mgtv.com", "v.mgtv.com", "m.mgtv.com"},
 			Patterns: []string{
-				`/b/(\d+)`,                           // /b/12345678.html
+				`/b/(\d+)`,
 				`/play/(\d+)`,
 				`cid=(\d+)`,
 			},
@@ -373,7 +501,7 @@ func defaultCoverIDDict() CoverIDDict {
 		"搜狐视频": {
 			Hosts: []string{"tv.sohu.com", "sohu.com"},
 			Patterns: []string{
-				`/v/([a-zA-Z0-9]+)`,                  // /v/abc12345.html
+				`/v/([A-Za-z0-9=_-]+)`,
 				`vid=(\d+)`,
 				`aid=(\d+)`,
 			},
@@ -390,8 +518,8 @@ func defaultCoverIDDict() CoverIDDict {
 		"哔哩哔哩": {
 			Hosts: []string{"bilibili.com", "www.bilibili.com", "m.bilibili.com", "b23.tv"},
 			Patterns: []string{
-				`(BV[a-zA-Z0-9]{10})`,                // BV号
-				`/av(\d+)`,                           // av号
+				`(BV[a-zA-Z0-9]{10})`,
+				`/av(\d+)`,
 				`bvid=(BV[a-zA-Z0-9]{10})`,
 			},
 			IDs: map[string]string{},
