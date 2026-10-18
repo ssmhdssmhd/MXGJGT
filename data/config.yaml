@@ -11,7 +11,7 @@ updater:
   # cron 表达式（秒 分 时 日 月 周）
   interval: "0 0 3 * * *"
   branch: main
-  repo_url: "https://github.com/example/mxgjgt.git"
+  repo_url: "https://github.com/ssmhdssmhd/MXGJGT.git"
   # 国内加速镜像，{origin} 会被替换为 repo_url
   mirrors:
     - "https://ghproxy.com/{origin}"

@@ -1,3 +1,103 @@
+MXGJGT v0.0.12 202610181455
+============================
+
+## 后台新增「内嵌播放」+「在线更新」显示当前版本 / 远程版本
+
+> 需求：① 后台资源详情里直接内嵌播放，不用再跳新窗口；② 后台「系统 / 更新」要能看到当前版本和远程最新版本，并支持检查更新。
+
+### ✨ 新增
+
+**1. 资源详情内嵌播放（本页直接看，不跳新窗口）**
+
+采集站给的 `vod_play_url` 是**播放页（HTML）**，不能直接喂给 `<video>`。新增一层解析：
+
+```
+播放页 HTML → 正则提取直链 m3u8 → 补全为绝对地址 → hls.js 播放
+```
+
+- `service/player.go` — 新增 `ExtractM3U8()`（4 条优先级正则，兼容 `const url=` / `"url":` / 绝对地址 / 相对地址写法）、`ResolvePlayStream()`（抓播放页 + 相对地址补全，保留 `sign` 等 query 参数）
+- 新接口 `GET /api/admin/stream?page=<播放页地址>`（需登录）→ 返回直链 `stream`
+- 前端详情弹窗顶部新增播放器：进详情**自动预解析第 1 集**，就绪后点 ▶ 即可播放；每集新增「内嵌播放」按钮，切换集数复用同一个播放器
+- 播放生命周期完整：`destroyHls()` / `stopPlay()`（关弹窗、返回搜索都会停止并释放）→ 无残留音频、无内存泄漏
+- 解析失败**自动降级**为「新窗口」播放，不阻断主流程
+
+**2. hls.js 内嵌进二进制（零外部依赖）**
+
+- 播放站已开 `Access-Control-Allow-Origin: *`，浏览器可直连 m3u8，无需服务端代理
+- 但浏览器原生只支持 HLS 的是 Safari，Chrome/Edge/Firefox 需要 HLS 库
+- 故把 **hls.js v1.5.20（Apache-2.0）** 打进二进制：`handler/assets/hls.min.js`（415 KB）+ `//go:embed`，由 `/mx/assets/hls.js` 自托管
+- 页面**按需懒加载**：只有真正点「内嵌播放」才去拉这个库，不增加首屏负担；Safari 走原生 `canPlayType` 分支，连库都不加载
+
+**3. 「系统 / 更新」显示当前版本 + 远程版本**
+
+- `service/updater.go` — 新增只读的 `UpdateInfo` 结构体与 `CheckUpdateInfo()`：**只查不更**（不下载、不替换、不重启）
+- 新接口 `GET /api/admin/update/check`（需登录）→ 返回 `current` / `latest` / `has_update` / `release` / `published` / `repo` / `enabled` / `error`
+- 前端「系统 / 更新」面板：
+
+| 展示项 | 来源 |
+|---|---|
+| 当前版本 | `/api/version` → `Version`（ldflags 注入） |
+| 远程版本 | `CheckUpdateInfo().latest`，带「（有新版本）/（已是最新）」标注 |
+| 构建时间 | `/api/version` → `BuildTime` |
+| 更新仓库 | `updater.repo_url` |
+| 定时更新 | `updater.enabled` |
+
+- **首次进入该标签页自动查一次**，无需手动点；另有「检查更新」按钮可手动复查
+- 按钮文案区分：`检查更新`（只查）／`立即更新`（下载 → 替换 → 重启），避免误触发重启
+
+### 📋 实测（本地二进制 + 真实链接 + 真实浏览器）
+
+```
+后端接口
+  GET /api/admin/update/check              → current=0.0.11 latest=0.0.11 has_update=false ✅
+                                             （成功读取 GitHub Releases，含 published/release 名）
+  GET /api/admin/stream?page=<真实播放页>   → 直链 https://svip.jijiplay14.com/20250516/90158_32c04ac0/index.m3u8?sign=80535b16...  ✅
+  GET /mx/assets/hls.js                    → 200 application/javascript 415398B ✅
+  直链可直连                                → 200 + access-control-allow-origin: * + content-type: application/vnd.apple.mpegurl ✅
+
+浏览器（真实回归，Playwright 实测整条 UI 链路）
+  登录 admin/mxgjgt                        → 200，顶栏显示 v0.0.11 ✅
+  「系统 / 更新」标签                        → 自动查询并渲染：当前版本 / 远程版本 / 构建时间 / 更新仓库 / 定时更新 ✅
+  资源站管理 → 搜索「开心锤锤」              → 命中 1 条「开心锤锤世界」✅
+  详情「开心锤锤世界」                        → 共 76 集；弹窗顶部出现播放器 ✅
+  进详情自动预解析第 1 集                     → 提示「已就绪：第01集，点 ▶ 播放」✅
+                                             video readyState=4 currentSrc=直链 error=null ✅
+  点「内嵌播放」                             → 提示「正在播放：第01集」，video 已设 src、error=null、画面出帧 ✅
+  控制台                                     → 无任何未捕获 JS 报错 ✅
+
+/api/clean/ 回归（真实链接，全部 200）
+  腾讯移动端 query 形式 cid（v0.0.11 修复目标）
+    m.v.qq.com/x/m/play?cid=qyqaod1cfohr8st&vid=x00272bw5lv&ptag=hippySearch&pageType=long
+                                             → 200  jm=斗罗大陆合集篇  jj=第100集 ✅
+  m.v.qq.com/x/m/play?cid=mzc00200js3mdvw   → 200  jm=斗罗大陆  jj=第100集 ✅
+  v.qq.com/x/cover/mzc00200js3mdvw/...html   → 200  jm=斗罗大陆  jj=第100集 ✅（路径形式回归）
+  m.v.qq.com/x/m/play?cid=mzc00200hldskop    → 200  jm=斗罗大陆5重生唐三·动态漫 第1季 ✅（降级匹配命中）
+  纯 wd 降级  wd=开心锤锤 第一季 / episode=第5集 → 200  命中「开心锤锤世界」✅
+  不存在的剧名XYZ                              → 404 + 「已尝试关键词」提示 ✅
+```
+
+> 注：沙箱环境访问 GitHub API 偶发 `403 API rate limit exceeded`（共享出口 IP 未鉴权限流，60 次/小时），
+> 已实测同一机器稍后重试即返回 200，属环境限流非代码问题；线上服务器正常网络下不受影响。
+
+### 📁 变更文件
+
+```
+new:      service/player.go            # 播放页 → 直链 m3u8（ExtractM3U8 / ResolvePlayStream）
+new:      handler/assets/hls.min.js    # hls.js v1.5.20 内嵌（Apache-2.0，415KB）
+modified: handler/admin.go             # 新增 handleAdminPlayStream / handleAdminUpdateCheck
+modified: handler/adminassets.go       # go:embed hls.min.js + handleAdminHlsJS
+modified: handler/api.go               # 挂路由 /api/admin/stream、/api/admin/update/check、/mx/assets/hls.js
+modified: handler/mxadmin.html         # 详情弹窗内嵌播放器 + 播放生命周期；系统面板「当前/远程版本」+ 检查更新
+modified: service/updater.go           # ghRelease 加 published_at；新增 UpdateInfo / CheckUpdateInfo（只读）
+modified: data/config.yaml             # repo_url 由示例地址改为真实仓库 ssmhdssmhd/MXGJGT
+modified: model/version.go             # 0.0.11 → 0.0.12
+modified: Makefile                     # VERSION 0.0.12
+modified: config/config.go             # 默认配置模板版本注释 v0.0.12
+modified: README.md                    # 后台功能表 / 管理接口表 / 项目结构 / 版本历史
+```
+
+---
+
 MXGJGT v0.0.11 202610181230
 ============================
 

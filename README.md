@@ -15,6 +15,8 @@
 | 🖥️ 官替（官方资源替换） | 官方链接 → 解析剧名+集数 → 资源站匹配 → 输出替换播放地址 |
 | 🔄 三层降级方案 | 方案1 无头浏览器渲染（主）→ 方案2 客户端传参 → 方案3 参数提示（保底） |
 | 🖥️ 网页后台 | 域名 `/mx/` 登录后可视化管理资源站 / 平台映射 / 在线更新 |
+| 🎞️ 内嵌播放 | 后台资源详情可直接内嵌播放（播放页解析为直链 m3u8，hls.js 播放），无需跳转新窗口 |
+| 🔖 版本检查 | 后台「系统 / 更新」显示 当前版本 + 远程最新版本，支持手动检查更新 |
 | 🛠️ 自动更新 | 查 GitHub Releases → 下载对应平台二进制 → 原子替换 → 自重启 |
 | ⚙️ 配置化 | YAML 配置文件，资源站列表独立配置 |
 | 🔐 API Key | 手动更新接口可选密钥保护；后台管理接口需登录 |
@@ -123,10 +125,10 @@ curl http://127.0.0.1:9991/api/version
 | 📡 资源站管理 | 列表 / 新增 / 编辑 / 启用停用 / 删除，含「苹果CMS 自动分析」 |
 | 🧪 测试 | 用关键词向该资源站发一次真实请求，返回 状态 / 耗时 / 命中条数 / 分类数 / 结果样例 |
 | 🔍 搜索 | 在该资源站内搜索关键词，列出 标题 / 分类 / 备注 / 资源ID，人工核对资源质量 |
-| 🎬 详情 / 播放 | 在搜索结果点「详情」查看该剧的剧集列表（剧名 / 分类 / 备注 / 资源ID / 播放源 + 每集地址），可直接「播放」跳转播放页或「复制」地址 |
+| 🎬 详情 / 内嵌播放 | 在搜索结果点「详情」查看剧集列表；点「内嵌播放」直接在本页播放（播放页自动解析为直链 m3u8，hls.js 播放，失败自动降级「新窗口」），亦可「新窗口」跳转或「复制」地址 |
 | 🔄 同步 | 重新拉取该资源站分类列表并写回 `cid`（不改动搜索地址 / 详情地址） |
 | 🔗 平台映射 | 勾选每个官方平台优先使用的资源站 |
-| ⚙️ 系统 | 查看版本 / 构建时间 / 仓库，重载配置、检查并更新 |
+| ⚙️ 系统 / 更新 | 查看 当前版本 / 远程最新版本 / 构建时间 / 更新仓库 / 定时更新状态；「检查更新」只查不更、「立即更新」下载替换并自重启 |
 
 - 登录态由 Cookie 会话维持，有效期 `admin.session_hours` 小时
 - `/api/admin/*` 全部要求登录后访问，未登录返回 `401`
@@ -134,6 +136,8 @@ curl http://127.0.0.1:9991/api/version
 - 后台页面位于 [handler/mxadmin.html](handler/mxadmin.html)，登录鉴权见 [handler/adminauth.go](handler/adminauth.go)
 - Logo / favicon 已**内嵌进二进制**（[handler/assets/](handler/assets) + [handler/adminassets.go](handler/adminassets.go)），
   由 `/mx/assets/logo.png`、`/mx/assets/favicon.png` 自托管，不依赖 `raw.githubusercontent.com` 等外部图床
+- 内嵌播放依赖的 **hls.js v1.5.20**（Apache-2.0）同样内嵌进二进制（[handler/assets/hls.min.js](handler/assets/hls.min.js)），
+  由 `/mx/assets/hls.js` 自托管、**按需懒加载**，Safari 走原生 HLS 分支不加载该库，Chrome/Edge/Firefox 才拉取
 
 ---
 
@@ -214,6 +218,9 @@ curl http://127.0.0.1:9991/api/version
 | POST | `/api/admin/site/auto` | 苹果CMS 接口自动分析（返回候选配置） |
 | GET | `/api/admin/site/test?id=&wd=` | 资源站连通性测试（关键词默认「庆余年」），返回 状态/耗时/命中条数/分类数/样例 |
 | GET | `/api/admin/site/search?id=&wd=` | 在指定资源站内搜索关键词，返回结果列表 |
+| GET | `/api/admin/site/detail?id=&rid=` | 获取指定资源详情与剧集播放列表（后台详情 / 内嵌播放用） |
+| GET | `/api/admin/stream?page=` | 解析采集站播放页 → 直链 m3u8（供后台内嵌播放，hls.js 直连） |
+| GET | `/api/admin/update/check` | 只读检查远程最新版本：返回 `current / latest / has_update / release / published / repo / enabled / error` |
 | POST | `/api/admin/site/sync?id=` | 同步资源站分类：重新拉取分类列表并写回 `cid` |
 | POST | `/api/admin/site` | 新增资源站 |
 | PUT | `/api/admin/site/:id` | 更新资源站 |

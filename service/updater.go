@@ -24,10 +24,50 @@ import (
 // ===== GitHub Releases API =====
 
 type ghRelease struct {
-	TagName string      `json:"tag_name"`
-	Name    string      `json:"name"`
-	Assets  []ghAsset   `json:"assets"`
-	Body    string      `json:"body"`
+	TagName     string    `json:"tag_name"`
+	Name        string    `json:"name"`
+	Assets      []ghAsset `json:"assets"`
+	Body        string    `json:"body"`
+	PublishedAt string    `json:"published_at"`
+}
+
+// UpdateInfo 版本检查结果（供后台「系统 / 更新」展示当前版本与远程版本）
+type UpdateInfo struct {
+	Current   string `json:"current"`    // 当前版本
+	Latest    string `json:"latest"`     // 远程最新版本（查询失败为空）
+	HasUpdate bool   `json:"has_update"` // 是否有新版本
+	Release   string `json:"release"`    // 远程 release 名称
+	Published string `json:"published"`  // 远程发布时间
+	Repo      string `json:"repo"`       // 更新仓库 owner/repo
+	Enabled   bool   `json:"enabled"`    // 定时更新是否开启
+	Error     string `json:"error"`      // 查询失败原因（有值时 latest 为空）
+}
+
+// CheckUpdateInfo 查询远程最新版本（只读，不下载不重启）
+func CheckUpdateInfo() UpdateInfo {
+	info := UpdateInfo{Current: model.Version}
+	cfg := config.GetConfig()
+	if cfg == nil {
+		info.Error = "配置为空"
+		return info
+	}
+	info.Enabled = cfg.Updater.Enabled
+	repo := extractRepo(cfg.Updater.RepoURL)
+	info.Repo = repo
+	if repo == "" {
+		info.Error = "无法从 repo_url 提取 owner/repo"
+		return info
+	}
+	rel, err := fetchLatestRelease(repo)
+	if err != nil {
+		info.Error = err.Error()
+		return info
+	}
+	info.Latest = strings.TrimPrefix(rel.TagName, "v")
+	info.Release = rel.Name
+	info.Published = rel.PublishedAt
+	info.HasUpdate = info.Latest != "" && info.Latest != info.Current
+	return info
 }
 
 type ghAsset struct {

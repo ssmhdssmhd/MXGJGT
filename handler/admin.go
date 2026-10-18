@@ -15,6 +15,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ========= 播放 / 版本检查 =========
+
+// handleAdminPlayStream GET /api/admin/stream?page=<播放页地址>
+// 把采集站的播放页解析成直链 m3u8，供后台内嵌播放（hls.js 直连，站点已开 CORS）
+func handleAdminPlayStream(c *gin.Context) {
+	page := strings.TrimSpace(c.Query("page"))
+	if page == "" {
+		c.JSON(200, model.Fail(400, "缺少 page 参数（播放页地址）"))
+		return
+	}
+	stream, err := service.ResolvePlayStream(page)
+	if err != nil {
+		c.JSON(200, model.Fail(404, "解析播放地址失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  "ok",
+		Data: map[string]any{
+			"page":   page,
+			"stream": stream,
+		},
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
+// handleAdminUpdateCheck GET /api/admin/update/check
+// 只查版本不更新：返回当前版本 / 远程最新版本 / 是否有更新
+func handleAdminUpdateCheck(c *gin.Context) {
+	info := service.CheckUpdateInfo()
+	msg := "已是最新版本 v" + info.Current
+	if info.Error != "" {
+		msg = "检查失败: " + info.Error
+	} else if info.HasUpdate {
+		msg = "发现新版本 v" + info.Latest
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  msg,
+		Data: info,
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
 // ========= 资源站 CRUD =========
 
 func handleAdminListSites(c *gin.Context) {

@@ -74,6 +74,12 @@
   .empty{color:var(--sub);font-size:14px;padding:14px 0}
   .kv{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
   .kv div b{color:var(--sub);font-weight:600;margin-right:6px}
+  /* 详情弹窗内嵌播放 */
+  .player{background:#0b0e17;border-radius:10px;overflow:hidden;margin-bottom:14px}
+  .player video{width:100%;max-height:340px;display:block;background:#000}
+  .player .pbar{display:flex;align-items:center;gap:10px;padding:8px 10px;color:#c7ccda;font-size:12px}
+  .player .pbar .spacer{flex:1}
+  .player .pbar .btn{padding:5px 10px;font-size:12px}
 
   /* 弹窗 */
   .mask{position:fixed;inset:0;background:rgba(10,14,30,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
@@ -152,11 +158,13 @@
 
     <!-- 系统 -->
     <section id="tab-sys" class="panel hide">
-      <h2>系统信息</h2>
+      <h2>系统信息 <span class="spacer"></span>
+        <button class="btn ghost sm" id="btn-check">检查更新</button>
+      </h2>
       <div class="kv" id="sys-info"></div>
       <div style="margin-top:18px" class="row">
         <button class="btn ghost" id="btn-reload">重载配置</button>
-        <button class="btn primary" id="btn-update">检查并更新</button>
+        <button class="btn primary" id="btn-update">立即更新</button>
       </div>
       <p class="empty" id="update-msg"></p>
     </section>
@@ -208,17 +216,26 @@
 
   // ===== 视图切换 =====
   function showLogin() { $("#login-view").classList.remove("hide"); $("#app-view").classList.add("hide"); $("#hdr-user").textContent = ""; }
+  // 运行时版本信息：当前版本来自服务端，远程版本由「检查更新」填充
+  var verData = {}, remoteVer = "未检查";
+  function renderSys() {
+    var d = verData;
+    $("#hdr-ver").textContent = "v" + (d.version || "?");
+    var rv = remoteVer;
+    if (d.remote_checked && d.remote_error) rv = "检查失败";
+    $("#sys-info").innerHTML =
+      '<div><b>当前版本</b>v' + esc(d.version || "?") + "</div>" +
+      '<div><b>远程版本</b>' + esc(rv) + "</div>" +
+      '<div><b>构建时间</b>' + esc(d.build) + "</div>" +
+      '<div><b>更新仓库</b>' + esc(d.repo_url || "-") + "</div>" +
+      '<div><b>定时更新</b>' + (d.updater ? "已开启" : "已关闭") + "</div>";
+  }
   function showApp(u) {
     $("#login-view").classList.add("hide"); $("#app-view").classList.remove("hide");
     $("#hdr-user").textContent = u ? ("· " + u) : "";
     api("/api/version").then(function (r) {
-      var d = r.data || {};
-      $("#hdr-ver").textContent = "v" + (d.version || "?");
-      $("#sys-info").innerHTML =
-        '<div><b>版本</b>' + esc(d.version) + "</div>" +
-        '<div><b>构建时间</b>' + esc(d.build) + "</div>" +
-        '<div><b>更新仓库</b>' + esc(d.repo_url) + "</div>" +
-        '<div><b>定时更新</b>' + (d.updater ? "已开启" : "已关闭") + "</div>";
+      verData = r.data || {};
+      renderSys();
     }).catch(function () {});
     loadSites(); loadMaps();
   }
@@ -252,6 +269,8 @@
       ["sites", "maps", "sys"].forEach(function (t) {
         $("#tab-" + t).classList.toggle("hide", t !== b.dataset.tab);
       });
+      // 首次进入「系统 / 更新」自动查一次远程版本
+      if (b.dataset.tab === "sys" && !verData.remote_checked) checkUpdate(false);
     });
   });
 
@@ -418,14 +437,20 @@
     if (wd) doSearch();
   }
 
-  // 详情：查看单部资源的剧集列表，可直接跳转播放 / 复制地址
+  // 详情：查看单部资源的剧集列表，可内嵌播放（直连 m3u8）/ 新窗口播放 / 复制地址
   function openDetailModal(site, rid, backWd) {
+    stopPlay();
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal wide"><h3>资源详情 · ' + esc(site.name) + "</h3>" +
+      '<div class="player hide" id="d-player">' +
+        '<video id="d-video" controls playsinline preload="metadata"></video>' +
+        '<div class="pbar"><span id="d-pinfo">点某集的「内嵌播放」即在此直接观看</span><span class="spacer"></span>' +
+          '<a class="btn ghost sm hide" id="d-open" target="_blank" rel="noopener noreferrer">新窗口播放</a></div>' +
+      "</div>" +
       '<div id="d-body"><p class="empty">加载中...</p></div>' +
       '<footer><button class="btn ghost" id="d-back">返回搜索</button><button class="btn ghost" id="d-close">关闭</button></footer></div></div>';
-    $("#d-close").onclick = function () { $("#modal-root").innerHTML = ""; };
-    $("#d-back").onclick = function () { openSearchModal(site, backWd); };
+    $("#d-close").onclick = function () { stopPlay(); $("#modal-root").innerHTML = ""; };
+    $("#d-back").onclick = function () { stopPlay(); openSearchModal(site, backWd); };
 
     api("/api/admin/site/detail?id=" + encodeURIComponent(site.id) + "&rid=" + encodeURIComponent(rid))
       .then(function (r) {
@@ -444,13 +469,15 @@
           box.innerHTML = h.join("");
           return;
         }
-        h.push('<p class="empty">共 ' + esc(eps.length) + " 集，点「播放」在新窗口打开播放页，或「复制」取地址：</p>");
+        h.push('<p class="empty">共 ' + esc(eps.length) + " 集：点「内嵌播放」在本页直接看，或「新窗口」打开播放页、"
+          + "「复制」取地址。</p>");
         h.push("<table><thead><tr><th>集数</th><th>播放地址</th><th>操作</th></tr></thead><tbody>");
         eps.slice(0, 300).forEach(function (e) {
           h.push("<tr><td>" + esc(e.episode) + "</td>" +
             "<td><code class='mono'>" + esc(e.url) + "</code></td>" +
             "<td><div class='ops'>" +
-              '<a class="btn ghost sm" href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer">播放</a>' +
+              "<button class='btn primary sm' data-play='" + esc(e.url) + "' data-ep='" + esc(e.episode) + "'>内嵌播放</button>" +
+              '<a class="btn ghost sm" href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer">新窗口</a>' +
               "<button class='btn ghost sm' data-copy='" + esc(e.url) + "'>复制</button>" +
             "</div></td></tr>");
         });
@@ -459,8 +486,90 @@
         box.querySelectorAll("button[data-copy]").forEach(function (b) {
           b.addEventListener("click", function () { copyText(b.dataset.copy); });
         });
+        box.querySelectorAll("button[data-play]").forEach(function (b) {
+          b.addEventListener("click", function () { playInline(b.dataset.play, b.dataset.ep, true); });
+        });
+        // 打开详情即预解析第 1 集，播放器就绪，点 ▶ 即可看
+        playInline(eps[0].url, eps[0].episode, false);
       })
       .catch(function (e) { $("#d-body").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+  }
+
+  // ===== 内嵌播放：播放页 → 直链 m3u8 → hls.js 播放 =====
+  var hlsInstance = null;
+  function destroyHls() {
+    if (hlsInstance) { try { hlsInstance.destroy(); } catch (e) {} hlsInstance = null; }
+  }
+  function stopPlay() {
+    destroyHls();
+    var v = $("#d-video");
+    if (v) { try { v.pause(); } catch (e) {} v.removeAttribute("src"); v.load(); }
+  }
+  function loadHls(cb) {
+    if (window.Hls) { cb(); return; }
+    var s = document.getElementById("hls-lib");
+    if (!s) {
+      s = document.createElement("script");
+      s.id = "hls-lib"; s.src = BASE + "/assets/hls.js";
+      document.head.appendChild(s);
+    }
+    if (s.dataset.ready === "1") { cb(); return; }
+    s.addEventListener("load", function () { s.dataset.ready = "1"; cb(); });
+    s.addEventListener("error", function () { cb("hls.js 加载失败"); });
+  }
+  // pageUrl 播放页地址；label 集数；autoplay 是否自动播放（用户点击时才自动播放）
+  function playInline(pageUrl, label, autoplay) {
+    var box = $("#d-player");
+    if (!box) return;
+    box.classList.remove("hide");
+    $("#d-pinfo").textContent = "解析播放地址中…（" + label + "）";
+    api("/api/admin/stream?page=" + encodeURIComponent(pageUrl)).then(function (r) {
+      if (!$("#d-video")) return; // 弹窗已关闭
+      var info = $("#d-pinfo");
+      if (r.code !== 200) {
+        info.textContent = (r.msg || "解析失败").replace("解析播放地址失败: ", "") + "（可点「新窗口」）";
+        return;
+      }
+      var url = (r.data || {}).stream;
+      var open = $("#d-open");
+      open.href = pageUrl; open.classList.remove("hide");
+      attachStream(url, label, autoplay);
+    }).catch(function (e) {
+      if ($("#d-pinfo")) $("#d-pinfo").textContent = "解析失败：" + (e.message || "网络错误");
+    });
+  }
+  function attachStream(url, label, autoplay) {
+    var v = $("#d-video"), info = $("#d-pinfo");
+    if (!v) return;
+    destroyHls();
+    var say = function (t) { if (info) info.textContent = t; };
+    var play = function () {
+      if (!autoplay) { say("已就绪：" + label + "，点 ▶ 播放"); return; }
+      say("正在播放：" + label);
+      var p = v.play(); if (p && p.catch) p.catch(function () { say("已就绪：" + label + "，点 ▶ 播放"); });
+    };
+    if (v.canPlayType("application/vnd.apple.mpegurl") && !window.Hls) {
+      // Safari 原生支持 HLS
+      v.src = url; play();
+      return;
+    }
+    loadHls(function (err) {
+      if (!$("#d-video")) return;
+      if (err || !window.Hls || !window.Hls.isSupported()) {
+        // 兜底：直接交给 video 标签，能不能播由浏览器决定
+        v.src = url;
+        if (v.canPlayType("application/vnd.apple.mpegurl")) { play(); }
+        else { say("当前浏览器不支持内嵌播放（" + (err || "无 HLS 支持") + "），请用「新窗口」"); }
+        return;
+      }
+      hlsInstance = new window.Hls({ enableWorker: true });
+      hlsInstance.on(window.Hls.Events.MANIFEST_PARSED, play);
+      hlsInstance.on(window.Hls.Events.ERROR, function (evt, data) {
+        if (data && data.fatal) say("播放出错（" + data.details + "），可点「新窗口」");
+      });
+      hlsInstance.loadSource(url);
+      hlsInstance.attachMedia(v);
+    });
   }
 
   // 复制到剪贴板（HTTPS 用 clipboard API，HTTP 环境回退 execCommand）
@@ -573,15 +682,40 @@
   $("#btn-refresh-maps").onclick = loadMaps;
 
   // ===== 系统 =====
+  // 检查远程版本（只查不更）：填充「远程版本」并给出提示
+  function checkUpdate(manual) {
+    if (manual) $("#update-msg").textContent = "正在检查远程版本...";
+    api("/api/admin/update/check").then(function (r) {
+      var d = r.data || {};
+      verData.remote_checked = true;
+      verData.remote_error = d.error || "";
+      if (d.error) remoteVer = "检查失败";
+      else if (d.has_update) remoteVer = "v" + d.latest + "（有新版本）";
+      else remoteVer = "v" + d.latest + "（已是最新）";
+      renderSys();
+      $("#update-msg").textContent = r.msg || "";
+      if (manual) toast(r.msg || "检查完成");
+    }).catch(function (e) {
+      verData.remote_checked = true;
+      verData.remote_error = e.message || "网络错误";
+      remoteVer = "检查失败";
+      renderSys();
+      $("#update-msg").textContent = "检查失败：" + (e.message || "网络错误");
+    });
+  }
+  $("#btn-check").onclick = function () { checkUpdate(true); };
   $("#btn-reload").onclick = function () {
     api("/api/admin/reload", { method: "POST" })
       .then(function (r) { toast(r.code === 200 ? "配置已重载" : (r.msg || "失败")); loadSites(); loadMaps(); });
   };
   $("#btn-update").onclick = function () {
-    $("#update-msg").textContent = "正在检查更新...";
+    $("#update-msg").textContent = "正在更新...（下载 → 替换 → 重启，约 20-40 秒）";
     api("/api/update", { method: "POST" })
       .then(function (r) { $("#update-msg").textContent = r.msg || ""; toast(r.msg || "完成"); })
-      .catch(function (e) { $("#update-msg").textContent = e.message || "失败"; });
+      .catch(function (e) {
+        // 更新成功后服务会自重启，连接可能被掐断
+        $("#update-msg").textContent = "已触发更新（服务正在重启，约 20-40 秒后刷新页面查看）：" + (e.message || "");
+      });
   };
 
   checkAuth();
