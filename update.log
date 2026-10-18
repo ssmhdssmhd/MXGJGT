@@ -1,3 +1,69 @@
+MXGJGT v0.0.9 202610180058
+===========================
+
+## 修复「平台映射」形同虚设：资源站优先级判断用错了字段
+
+> 上一版发现的问题：后台配的「官方平台 → 优先资源站」映射实际不生效，所有请求都落到搜索结果第一条。
+
+### 🔍 根因
+
+`resolvePlay` 里用 **搜索结果.ResourceID** 去比对 **映射里配置的站点 ID**：
+
+```go
+if results[i].ResourceID == pref { ... }   // ❌
+```
+
+这两个字段语义完全不同：
+
+- `ResourceID` 是采集站里的 **vod_id**（如 `45183`，数字）
+- 映射里存的是 **站点 ID**（如 `jjm3u8`）
+
+两者永远不相等 → 优先级判断从不命中 → 每次都回退到 `results[0]`（谁先返回用谁，还不稳定）。
+
+同样的字段误用还出现在「定位来源资源站取详情」处（`picked.ResourceID == rs.ID`）。
+
+### ✅ 修复
+
+1. 先把映射里的**站点 ID 转换成站点名称**（保持映射配置的先后顺序）
+2. 再按名称匹配搜索结果：`results[i].Site == name`，取第一个命中的站点
+3. 定位来源资源站改为按名称匹配：`picked.Site == rs.Name && rs.Enabled && 苹果CMS`
+4. 映射里填了**不存在的站点 ID** 时安全回退兜底，不再静默失效
+
+### 📋 实测（本地双资源站：吉吉资源 M3U8 / 非凡资源）
+
+```
+腾讯视频 → [ffzy(非凡), jjm3u8(吉吉)]
+  /api/clean/?url=<腾讯链接>&wd=狂飙  → https://vod.feifei-kan.com/share/4050...  ✅ 用非凡
+
+腾讯视频 → [jjm3u8(吉吉), ffzy(非凡)]
+  /api/clean/?url=<腾讯链接>&wd=狂飙  → https://svip.jijiplay5.com/watch/51/4379/... ✅ 用吉吉
+
+爱奇艺链接（映射 [jjm3u8, ffzy]）
+  /api/clean/                          → https://svip.jijiplay5.com/watch/51/4379/... ✅ 用吉吉
+
+腾讯视频 → [jjm3u8]（只在映射里留吉吉）
+  /api/clean/                          → https://svip.jijiplay5.com/...             ✅ 用吉吉
+
+腾讯视频 → [nonexistent]（不存在的站点 ID）
+  /api/clean/                          → 回退兜底结果，正常返回 url，不报错        ✅
+
+方案1 全链路（无 wd，腾讯链接自动识别剧名）
+  /api/clean/?url=<腾讯链接>            → 按映射用非凡资源，正常输出替换地址        ✅
+```
+
+后台接口 `POST /api/admin/mapping`（`{"site":"腾讯视频","sites":["jjm3u8","ffzy"]}`）改完即生效，`mappings.yaml` 落盘正常。
+
+### 📁 变更文件
+
+- `handler/api.go` — `resolvePlay`：映射 ID → 站点名 → 按顺序选中；详情站定位改为按名称匹配；新增 `containsStr`
+- `model/version.go`、`Makefile`、`config/config.go` — 版本号 0.0.9
+- `README.md` — 新增「资源站优先级：平台映射」说明
+
+> 遗留（本次未改）：未配置映射的平台，兜底仍取 `results[0]`，而多资源站结果是并发追加的，顺序不完全稳定。
+> 如需严格确定性，可改为「先全局按匹配度排序，再取第一条」。
+
+---
+
 MXGJGT v0.0.8 202610180045
 ===========================
 

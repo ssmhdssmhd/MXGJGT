@@ -159,6 +159,16 @@ func noMatchMsg(title string) string {
 	return msg
 }
 
+// containsStr 字符串切片是否包含目标值
+func containsStr(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 // resolvePlay 解析剧名+集数 → 最佳替换播放地址
 // 返回: 剧名, 集数, 替换URL, 最佳匹配搜索结果
 func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *model.SearchResult) {
@@ -169,13 +179,22 @@ func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *mod
 		return
 	}
 
-	// 1. 根据映射选资源站
-	var preferred []string
+	// 1. 根据映射取「优先资源站」的站点名（映射里存的是站点 ID，需要换成名称才能和搜索结果对应）
+	var preferredNames []string
 	for _, m := range config.GetMappings() {
-		if m.Official == siteName {
-			preferred = m.Sites
-			break
+		if m.Official != siteName {
+			continue
 		}
+		// 按映射里配置的优先级顺序转成站点名
+		for _, id := range m.Sites {
+			for _, s := range config.GetSites() {
+				if (s.ID == id || s.Name == id) && !containsStr(preferredNames, s.Name) {
+					preferredNames = append(preferredNames, s.Name)
+					break
+				}
+			}
+		}
+		break
 	}
 
 	// 2. 搜索 + 选最佳
@@ -190,10 +209,10 @@ func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *mod
 	}
 	var picked *model.SearchResult
 
-	// 优先映射的资源站 + 匹配度高的
-	for _, pref := range preferred {
+	// 优先映射的资源站（按映射配置的先后顺序）
+	for _, name := range preferredNames {
 		for i := range results {
-			if results[i].ResourceID == pref {
+			if results[i].Site == name {
 				picked = &results[i]
 				break
 			}
@@ -209,7 +228,8 @@ func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *mod
 
 	if picked != nil && picked.ResourceID != "" {
 		for _, rs := range config.GetSites() {
-			if picked.ResourceID == rs.ID || (picked.Site == rs.Name && service.IsAppleCMSType(rs.Type)) {
+			// 按站点名定位来源资源站（ResourceID 是采集站的 vod_id，与站点 ID 不是一回事）
+			if picked.Site == rs.Name && rs.Enabled && service.IsAppleCMSType(rs.Type) {
 				_, eps, _ := service.FetchDetail(rs, picked.ResourceID)
 				target := episode
 				// 找指定集数的 URL
