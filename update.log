@@ -1,3 +1,69 @@
+MXGJGT v0.0.7 202610180030
+===========================
+
+## 后台资源站新增「测试 / 搜索 / 同步」 + logo 改为自托管
+
+> 网页后台「资源站管理」每行新增 测试 / 搜索 / 同步 三个按钮，可直接验证采集源可用性与资源质量；同时修复后台 logo 无法加载的问题。
+
+### ✅ 新增功能
+
+1. **资源站 测试（🧪）**
+   - 接口 `GET /api/admin/site/test?id=&wd=`
+   - 用关键词（默认「庆余年」）向该资源站发一次真实请求
+   - 返回：是否可用 / 耗时 ms / 命中条数 / 分类数量 / 结果样例（最多 5 条）
+   - 失败时返回具体错误（如 `connection refused`）
+
+2. **资源站 搜索（🔍）**
+   - 接口 `GET /api/admin/site/search?id=&wd=`
+   - 在指定资源站内搜索关键词，列表返回 标题 / 分类 / 备注 / 资源ID
+   - 后台弹窗以表格展示（最多 50 条），用于人工核对采集源质量
+
+3. **资源站 同步（🔄）**
+   - 接口 `POST /api/admin/site/sync?id=`
+   - 重新拉取该资源站苹果CMS 分类列表，写回 `sites.yaml` 的 `cid`
+   - 不改动搜索地址 / 详情地址；返回分类列表与同步前后 CID
+
+4. **后台接口 `id` 支持资源站 ID 或名称**
+
+### 🐛 修复
+
+1. **后台 logo / favicon 无法加载**
+   - 原因：页面引用 `raw.githubusercontent.com/ssmhdssmhd/MXLOGO/...`，该域名在多数国内网络被墙
+   - 修复：logo 与 favicon 改为 `go:embed` 内嵌进二进制，由 `/mx/assets/logo.png`、`/mx/assets/favicon.png` 自托管，
+     页面不再请求任何外部图床 → 断网/被墙环境下也能正常显示
+
+2. **资源站类型判定不一致**
+   - `applemcms`（自动分析产物 / 新增默认值）未被识别为苹果CMS，会误走 HTML 解析分支
+   - 统一为 `IsAppleCMSType()`：兼容 `applecms` / `applemcms` / `acms` / `cms`
+
+### 📋 实测（本地服务 + 真实资源站）
+
+```
+静态资源   /mx/assets/logo.png              → 200 image/png 391584B ✅
+静态资源   /mx/assets/favicon.png           → 200 1793B ✅
+未登录     /api/admin/site/test             → 401 ✅
+测试       吉吉资源 M3U8 (庆余年)           → 可用 / 1209ms / 命中 7 条 / 分类 11 个 ✅
+搜索       吉吉资源 M3U8 (狂飙)             → 命中 20 条 ✅
+同步       吉吉资源 M3U8                    → 分类 11 个，CID 已写回 sites.yaml ✅
+失败路径   坏站点 test/sync                 → ok:false + 具体错误 / code 400 ✅
+回归       /api/search/ 狂飙 第1集          → 正常返回替换地址 ✅
+浏览器     登录页/顶栏 logo、6 个操作按钮、三个弹窗 → 全部正常，控制台无报错 ✅
+```
+
+### 📁 变更文件
+
+- `handler/adminassets.go`（新增）+ `handler/assets/logo.png`、`handler/assets/favicon.png` — logo 内嵌自托管
+- `handler/mxadmin.html` — 资源站行新增 测试/搜索/同步 按钮与三个弹窗；logo/favicon 改自托管
+- `handler/admin.go` — 新增 `handleAdminTestSite` / `handleAdminSearchSite` / `handleAdminSyncSite`
+- `handler/api.go` — 注册 `/mx/assets/*` 与三个新管理路由
+- `service/acms.go` — 新增 `FetchSiteCIDs`、`ProbeSite`
+- `service/resource.go` — 新增 `SearchOneSite`、`IsAppleCMSType`
+- `model/types.go` — 新增 `CIDItem`、`SiteTestResult`
+- `model/version.go`、`Makefile`、`config/config.go` — 版本号 0.0.7
+- `README.md` — 后台「测试/搜索/同步」说明、管理接口表、logo 自托管说明
+
+---
+
 MXGJGT v0.0.6 202610180701
 ===========================
 

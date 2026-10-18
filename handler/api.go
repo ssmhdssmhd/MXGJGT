@@ -28,6 +28,9 @@ func RegisterRoutes(r *gin.Engine) {
 		{
 			admin.GET("/sites",        handleAdminListSites)
 			admin.POST("/site/auto",   handleAdminAutoCMS)
+			admin.GET("/site/test",    handleAdminTestSite)
+			admin.GET("/site/search",  handleAdminSearchSite)
+			admin.POST("/site/sync",   handleAdminSyncSite)
 			admin.POST("/site",        handleAdminAddSite)
 			admin.PUT("/site/:id",     handleAdminUpdateSite)
 			admin.DELETE("/site/:id",  handleAdminDelSite)
@@ -57,6 +60,8 @@ func registerAdminUI(r *gin.Engine) {
 	}
 	r.GET(p, handleAdminPage)
 	r.GET(p+"/", handleAdminPage)
+	r.GET(p+"/assets/logo.png", handleAdminLogo)
+	r.GET(p+"/assets/favicon.png", handleAdminFavicon)
 	r.POST(p+"/api/login", handleAdminLogin)
 	r.POST(p+"/api/logout", handleAdminLogout)
 	r.GET(p+"/api/me", handleAdminMe)
@@ -187,7 +192,7 @@ func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *mod
 
 	if picked != nil && picked.ResourceID != "" {
 		for _, rs := range config.GetSites() {
-			if picked.ResourceID == rs.ID || (picked.Site == rs.Name && strings.EqualFold(rs.Type, "applecms")) {
+			if picked.ResourceID == rs.ID || (picked.Site == rs.Name && service.IsAppleCMSType(rs.Type)) {
 				_, eps, _ := service.FetchDetail(rs, picked.ResourceID)
 				target := episode
 				// 找指定集数的 URL

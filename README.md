@@ -93,6 +93,9 @@ curl http://127.0.0.1:9991/api/version
 |---|---|
 | 🔐 登录 | 默认账号 `admin` / `mxgjgt`（见下方 `admin` 配置，**请务必修改**） |
 | 📡 资源站管理 | 列表 / 新增 / 编辑 / 启用停用 / 删除，含「苹果CMS 自动分析」 |
+| 🧪 测试 | 用关键词向该资源站发一次真实请求，返回 状态 / 耗时 / 命中条数 / 分类数 / 结果样例 |
+| 🔍 搜索 | 在该资源站内搜索关键词，列出 标题 / 分类 / 备注 / 资源ID，人工核对资源质量 |
+| 🔄 同步 | 重新拉取该资源站分类列表并写回 `cid`（不改动搜索地址 / 详情地址） |
 | 🔗 平台映射 | 勾选每个官方平台优先使用的资源站 |
 | ⚙️ 系统 | 查看版本 / 构建时间 / 仓库，重载配置、检查并更新 |
 
@@ -100,6 +103,8 @@ curl http://127.0.0.1:9991/api/version
 - `/api/admin/*` 全部要求登录后访问，未登录返回 `401`
 - `admin.enabled: false` 时 `/mx/` 与 `/api/admin/*` 统一返回伪装 `404`
 - 后台页面位于 [handler/mxadmin.html](handler/mxadmin.html)，登录鉴权见 [handler/adminauth.go](handler/adminauth.go)
+- Logo / favicon 已**内嵌进二进制**（[handler/assets/](handler/assets) + [handler/adminassets.go](handler/adminassets.go)），
+  由 `/mx/assets/logo.png`、`/mx/assets/favicon.png` 自托管，不依赖 `raw.githubusercontent.com` 等外部图床
 
 ---
 
@@ -178,12 +183,17 @@ curl http://127.0.0.1:9991/api/version
 |---|---|---|
 | GET | `/api/admin/sites` | 列出全部资源站 |
 | POST | `/api/admin/site/auto` | 苹果CMS 接口自动分析（返回候选配置） |
+| GET | `/api/admin/site/test?id=&wd=` | 资源站连通性测试（关键词默认「庆余年」），返回 状态/耗时/命中条数/分类数/样例 |
+| GET | `/api/admin/site/search?id=&wd=` | 在指定资源站内搜索关键词，返回结果列表 |
+| POST | `/api/admin/site/sync?id=` | 同步资源站分类：重新拉取分类列表并写回 `cid` |
 | POST | `/api/admin/site` | 新增资源站 |
 | PUT | `/api/admin/site/:id` | 更新资源站 |
 | DELETE | `/api/admin/site/:id` | 删除资源站 |
 | GET | `/api/admin/mappings` | 查看 官方站→资源站 映射 |
 | POST | `/api/admin/mapping` | 设置 官方站→资源站 映射 |
 | POST | `/api/admin/reload` | 热重载配置 |
+
+> `id` 支持资源站 ID 或名称。未找到返回 `404`；测试/同步失败返回 `code: 400` + 原因。
 
 ---
 
@@ -194,8 +204,10 @@ MXGJGT/
 ├── main.go                 # 入口
 ├── handler/                # HTTP 路由
 │   ├── api.go              # 核心接口（clean/search/version/update）
-│   ├── admin.go            # 后台管理 API（资源站 / 映射 CRUD）
+│   ├── admin.go            # 后台管理 API（资源站 / 映射 CRUD + 测试/搜索/同步）
 │   ├── adminauth.go        # 网页后台登录鉴权 + 会话
+│   ├── adminassets.go      # 后台 logo / favicon（go:embed 内嵌）
+│   ├── assets/             # 内嵌静态资源（logo.png / favicon.png）
 │   ├── mxadmin.html        # 网页后台页面（登录 + 管理界面）
 │   └── version.go          # 版本兼容导出
 ├── service/                # 业务逻辑
@@ -297,7 +309,7 @@ browser:
 推送 `v*` tag 或手动触发 `Release` 工作流，即可在云端构建并发布多平台产物：
 
 ```bash
-git tag v0.0.6 && git push origin v0.0.6
+git tag v0.0.7 && git push origin v0.0.7
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`

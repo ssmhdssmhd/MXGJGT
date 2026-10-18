@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MXGJGT 后台</title>
-<link rel="icon" href="https://raw.githubusercontent.com/ssmhdssmhd/MXLOGO/main/favicon/favicon-32.png">
+<link rel="icon" id="favicon">
 <style>
   :root{
     --brand:#2f6bff; --brand2:#7c4dff; --ok:#16a34a; --err:#e5484d;
@@ -56,6 +56,7 @@
   th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   th{color:var(--sub);font-weight:600;font-size:12px}
   tr:last-child td{border-bottom:0}
+  .ops{display:flex;gap:6px;flex-wrap:wrap}
   code.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#374151;
     background:#f2f4f9;padding:2px 6px;border-radius:6px;word-break:break-all}
   .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px}
@@ -94,7 +95,7 @@
 <!-- ===== 登录页 ===== -->
 <div id="login-view">
   <form class="login-card" id="login-form" autocomplete="off">
-    <img src="https://raw.githubusercontent.com/ssmhdssmhd/MXLOGO/main/web/web-logo.png" alt="MXLOGO">
+    <img id="logo-login" alt="MXGJGT">
     <h1>MXGJGT 后台管理</h1>
     <p class="sub">登录后可管理资源站 / 平台映射 / 系统更新</p>
     <div class="field">
@@ -113,7 +114,7 @@
 <!-- ===== 后台主页 ===== -->
 <div id="app-view" class="hide">
   <header>
-    <img src="https://raw.githubusercontent.com/ssmhdssmhd/MXLOGO/main/web/web-logo.png" alt="logo">
+    <img id="logo-header" alt="MXGJGT">
     <span class="title">MXGJGT 后台</span>
     <span class="ver" id="hdr-ver"></span>
     <span class="spacer"></span>
@@ -170,6 +171,13 @@
   var BASE = location.pathname.replace(/\/+$/, "");
   if (!BASE) BASE = "/mx";
   var API = BASE + "/api";
+
+  // logo / favicon 由服务端自托管（内嵌二进制），不依赖外部图床
+  document.getElementById("favicon").setAttribute("href", BASE + "/assets/favicon.png");
+  ["logo-login", "logo-header"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.setAttribute("src", BASE + "/assets/logo.png");
+  });
 
   function $(s, r) { return (r || document).querySelector(s); }
   function esc(v) {
@@ -262,11 +270,14 @@
         "<td><code class='mono'>" + esc(s.url) + "</code></td>" +
         "<td>" + esc(s.cid || "-") + "</td>" +
         "<td>" + (s.enabled ? '<span class="pill on">启用</span>' : '<span class="pill off">停用</span>') + "</td>" +
-        "<td>" +
-          "<button class='btn ghost sm' data-act='edit' data-id='" + esc(s.id) + "'>编辑</button> " +
-          "<button class='btn ghost sm' data-act='toggle' data-id='" + esc(s.id) + "'>" + (s.enabled ? "停用" : "启用") + "</button> " +
+        "<td><div class='ops'>" +
+          "<button class='btn ghost sm' data-act='test' data-id='" + esc(s.id) + "'>测试</button>" +
+          "<button class='btn ghost sm' data-act='search' data-id='" + esc(s.id) + "'>搜索</button>" +
+          "<button class='btn ghost sm' data-act='sync' data-id='" + esc(s.id) + "'>同步</button>" +
+          "<button class='btn ghost sm' data-act='edit' data-id='" + esc(s.id) + "'>编辑</button>" +
+          "<button class='btn ghost sm' data-act='toggle' data-id='" + esc(s.id) + "'>" + (s.enabled ? "停用" : "启用") + "</button>" +
           "<button class='btn danger sm' data-act='del' data-id='" + esc(s.id) + "'>删除</button>" +
-        "</td></tr>");
+        "</div></td></tr>");
     });
     h.push("</tbody></table>");
     var box = $("#sites-box"); box.innerHTML = h.join("");
@@ -275,6 +286,9 @@
       btn.addEventListener("click", function () {
         var a = btn.dataset.act;
         if (a === "edit") openSiteModal("edit", site);
+        else if (a === "test") openTestModal(site);
+        else if (a === "search") openSearchModal(site);
+        else if (a === "sync") openSyncModal(site);
         else if (a === "toggle") updateSite(site.id, { enabled: !site.enabled });
         else if (a === "del") { if (confirm("确认删除资源站 " + site.name + " ?")) delSite(site.id); }
       });
@@ -330,6 +344,93 @@
   }
   $("#btn-add-site").onclick = function () { openSiteModal("add", {}); };
   $("#btn-refresh-sites").onclick = loadSites;
+
+  // ===== 资源站：测试 / 搜索 / 同步 =====
+
+  // 测试：向该资源站发一次真实请求，返回耗时 / 命中条数 / 样例
+  function openTestModal(site) {
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal"><h3>测试资源站：' + esc(site.name) + "</h3>" +
+      '<div class="field"><label>测试关键词</label><input id="t-wd" value="庆余年"></div>' +
+      '<footer><button class="btn ghost" id="t-close">关闭</button><button class="btn primary" id="t-go">开始测试</button></footer>' +
+      '<div id="t-result" style="margin-top:16px"></div></div></div>';
+    $("#t-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#t-go").onclick = function () {
+      $("#t-result").innerHTML = '<p class="empty">测试中，请稍候...</p>';
+      api("/api/admin/site/test?id=" + encodeURIComponent(site.id) + "&wd=" + encodeURIComponent($("#t-wd").value.trim()))
+        .then(function (r) {
+          if (r.code !== 200) { $("#t-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+          var t = (r.data || {}).result || {};
+          var h = '<div class="kv">' +
+            "<div><b>状态</b>" + (t.ok ? '<span class="pill on">接口可用</span>' : '<span class="pill off">不可用</span>') + "</div>" +
+            "<div><b>耗时</b>" + esc(t.latency_ms) + " ms</div>" +
+            "<div><b>命中</b>" + esc(t.count) + " 条</div>" +
+            "<div><b>分类</b>" + esc(t.cid_count) + " 个</div></div>";
+          if (t.error) h += '<p class="err">错误：' + esc(t.error) + "</p>";
+          else if (!t.count) h += '<p class="empty">接口可达，但该关键词未返回结果。</p>';
+          var samples = t.samples || [];
+          if (samples.length) h += '<p class="empty">结果样例：</p><textarea rows="5" readonly>' + esc(samples.join("\n")) + "</textarea>";
+          $("#t-result").innerHTML = h;
+        })
+        .catch(function (e) { $("#t-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    };
+  }
+
+  // 搜索：在该资源站内搜索关键词，列出结果供人工核对
+  function openSearchModal(site) {
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal"><h3>搜索资源站：' + esc(site.name) + "</h3>" +
+      '<div class="field"><label>关键词</label><input id="s-wd" placeholder="输入剧名，如：狂飙"></div>' +
+      '<footer><button class="btn ghost" id="s-close">关闭</button><button class="btn primary" id="s-go">搜索</button></footer>' +
+      '<div id="s-result" style="margin-top:16px"></div></div></div>';
+    $("#s-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    function doSearch() {
+      var wd = $("#s-wd").value.trim();
+      if (!wd) { toast("请输入关键词"); return; }
+      $("#s-result").innerHTML = '<p class="empty">搜索中...</p>';
+      api("/api/admin/site/search?id=" + encodeURIComponent(site.id) + "&wd=" + encodeURIComponent(wd))
+        .then(function (r) {
+          if (r.code !== 200) { $("#s-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+          var d = r.data || {}, list = d.results || [];
+          if (!list.length) { $("#s-result").innerHTML = '<p class="empty">未搜索到结果。</p>'; return; }
+          var h = ['<p class="empty">命中 ' + esc(d.count) + " 条：</p>",
+            "<table><thead><tr><th>标题</th><th>分类</th><th>备注</th><th>资源ID</th></tr></thead><tbody>"];
+          list.slice(0, 50).forEach(function (x) {
+            h.push("<tr><td>" + esc(x.title) + "</td><td>" + esc(x.type) + "</td><td>" + esc(x.remark) +
+              "</td><td><code class='mono'>" + esc(x.resource_id) + "</code></td></tr>");
+          });
+          h.push("</tbody></table>");
+          $("#s-result").innerHTML = h.join("");
+        })
+        .catch(function (e) { $("#s-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    }
+    $("#s-go").onclick = doSearch;
+    $("#s-wd").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); doSearch(); }
+    });
+  }
+
+  // 同步：重新拉取分类列表并写回 CID
+  function openSyncModal(site) {
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal"><h3>同步资源站：' + esc(site.name) + "</h3>" +
+      '<p class="empty">重新拉取该资源站的最新分类列表，并写回分类 CID（不会修改搜索地址 / 详情地址）。</p>' +
+      '<footer><button class="btn ghost" id="y-close">取消</button><button class="btn primary" id="y-go">开始同步</button></footer>' +
+      '<div id="y-result" style="margin-top:16px"></div></div></div>';
+    $("#y-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#y-go").onclick = function () {
+      $("#y-result").innerHTML = '<p class="empty">同步中...</p>';
+      api("/api/admin/site/sync?id=" + encodeURIComponent(site.id), { method: "POST" })
+        .then(function (r) {
+          if (r.code !== 200) { $("#y-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+          var d = r.data || {}, cids = d.cids || [];
+          $("#y-result").innerHTML = '<p class="empty">同步完成，共 ' + esc(d.count) + " 个分类，CID 已写回。</p>" +
+            "<textarea rows='7' readonly>" + esc(cids.map(function (v) { return v.id + " " + v.name; }).join("\n")) + "</textarea>";
+          loadSites();
+        })
+        .catch(function (e) { $("#y-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    };
+  }
 
   // 苹果CMS 自动分析
   $("#btn-auto").onclick = function () {

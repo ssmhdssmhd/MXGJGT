@@ -4,6 +4,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,4 +187,113 @@ func handleAdminReload(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, model.OK("", "", "配置已重新加载"))
+}
+
+// ========= 资源站 测试 / 搜索 / 同步 =========
+
+// findSite 按 ID 或名称查找资源站
+func findSite(id string) (model.ResourceSite, bool) {
+	for _, s := range config.GetSites() {
+		if s.ID == id || s.Name == id {
+			return s, true
+		}
+	}
+	return model.ResourceSite{}, false
+}
+
+// siteIDFromQuery 从 query 取资源站 ID/名称
+func siteIDFromQuery(c *gin.Context) string {
+	return strings.TrimSpace(c.Query("id"))
+}
+
+// handleAdminTestSite GET /api/admin/site/test?id=&wd=
+// 连通性测试：用关键词（默认「庆余年」）向该资源站发一次真实请求
+func handleAdminTestSite(c *gin.Context) {
+	site, ok := findSite(siteIDFromQuery(c))
+	if !ok {
+		c.JSON(200, model.Fail(404, "未找到资源站"))
+		return
+	}
+	res := service.ProbeSite(site, c.Query("wd"))
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  "测试完成",
+		Data: map[string]any{
+			"site":   site.Name,
+			"result": res,
+		},
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
+// handleAdminSearchSite GET /api/admin/site/search?id=&wd=
+// 在指定资源站内搜索关键词，返回结果列表（后台人工核对用）
+func handleAdminSearchSite(c *gin.Context) {
+	site, ok := findSite(siteIDFromQuery(c))
+	if !ok {
+		c.JSON(200, model.Fail(404, "未找到资源站"))
+		return
+	}
+	wd := strings.TrimSpace(c.Query("wd"))
+	if wd == "" {
+		c.JSON(200, model.Fail(400, "缺少 wd 参数"))
+		return
+	}
+	results, err := service.SearchOneSite(site, wd)
+	if err != nil {
+		c.JSON(200, model.Fail(400, "搜索失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  fmt.Sprintf("命中 %d 条", len(results)),
+		Data: map[string]any{
+			"site":    site.Name,
+			"wd":      wd,
+			"count":   len(results),
+			"results": results,
+		},
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
+// handleAdminSyncSite POST /api/admin/site/sync?id=
+// 同步资源站分类：重新拉取苹果CMS分类列表并写回 cid
+func handleAdminSyncSite(c *gin.Context) {
+	id := siteIDFromQuery(c)
+	sites := config.GetSites()
+	for i := range sites {
+		if sites[i].ID != id && sites[i].Name != id {
+			continue
+		}
+		cids, err := service.FetchSiteCIDs(sites[i])
+		if err != nil {
+			c.JSON(200, model.Fail(400, "同步失败: "+err.Error()))
+			return
+		}
+		oldCID := sites[i].CID
+		parts := make([]string, 0, len(cids))
+		for _, it := range cids {
+			parts = append(parts, strconv.Itoa(it.ID))
+		}
+		sites[i].CID = strings.Join(parts, ",")
+		if err := config.SaveSites(sites); err != nil {
+			c.JSON(200, model.Fail(500, "保存失败: "+err.Error()))
+			return
+		}
+		c.JSON(http.StatusOK, model.Response{
+			Code: 200,
+			Msg:  fmt.Sprintf("同步完成，分类 %d 个", len(cids)),
+			Data: map[string]any{
+				"site":    sites[i].Name,
+				"old_cid": oldCID,
+				"cid":     sites[i].CID,
+				"count":   len(cids),
+				"cids":    cids,
+			},
+			Time: time.Now().Format("2006-01-02 15:04:05"),
+		})
+		return
+	}
+	c.JSON(200, model.Fail(404, "未找到资源站"))
 }

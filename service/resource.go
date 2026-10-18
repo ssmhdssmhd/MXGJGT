@@ -47,12 +47,25 @@ func SearchResource(title, episode string) []model.SearchResult {
 
 // searchOneSite 根据资源站类型分发
 func searchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResult, error) {
-	switch strings.ToLower(site.Type) {
-	case "applecms", "acms", "cms":
+	if IsAppleCMSType(site.Type) {
 		return searchAppleCMS(site, keyword)
-	default:
-		return searchHTML(site, keyword)
 	}
+	return searchHTML(site, keyword)
+}
+
+// SearchOneSite 在单个资源站内搜索（供后台「测试 / 搜索」使用）
+func SearchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResult, error) {
+	return searchOneSite(site, keyword)
+}
+
+// IsAppleCMSType 判断资源站类型是否为苹果CMS 采集接口
+// 兼容 applecms / applemcms / acms / cms 几种写法
+func IsAppleCMSType(t string) bool {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "applecms", "applemcms", "acms", "cms":
+		return true
+	}
+	return false
 }
 
 // ========== 苹果CMS 接口搜索 ==========
@@ -174,7 +187,7 @@ func searchHTML(site model.ResourceSite, keyword string) ([]model.SearchResult, 
 
 // FetchDetail 获取资源站详情（含播放列表）
 func FetchDetail(site model.ResourceSite, resourceID string) (*model.SearchResult, []model.EpisodePlay, error) {
-	if site.Type != "applecms" || site.DetailURL == "" || resourceID == "" {
+	if !IsAppleCMSType(site.Type) || site.DetailURL == "" || resourceID == "" {
 		return nil, nil, nil
 	}
 

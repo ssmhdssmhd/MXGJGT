@@ -184,6 +184,24 @@ type UpdateSiteRequest struct {
 
 // UpdateMappingRequest 更新官方站→资源站映射
 type UpdateMappingRequest struct {
-	Site   string   `json:"site" binding:"required"`
+	Site  string   `json:"site" binding:"required"`
 	Sites []string `json:"sites" binding:"required"`
+}
+
+// ======== 资源站 测试 / 搜索 / 同步 ========
+
+// CIDItem 资源站分类项（苹果CMS 分类接口）
+type CIDItem struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// SiteTestResult 资源站连通性测试结果
+type SiteTestResult struct {
+	OK        bool     `json:"ok"`         // 接口是否可用
+	LatencyMS int64    `json:"latency_ms"` // 耗时（毫秒）
+	Count     int      `json:"count"`      // 命中的结果条数
+	Samples   []string `json:"samples"`    // 结果样例标题（最多 5 条）
+	CIDCount  int      `json:"cid_count"`  // 分类数量
+	Error     string   `json:"error,omitempty"`
 }

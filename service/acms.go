@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"mxgjgt/model"
 	"mxgjgt/utils"
@@ -175,4 +176,58 @@ func fetchCMSCIDs(base string) []model.CIDMapResponse {
 		return result
 	}
 	return nil
+}
+
+// ========= 资源站 测试 / 分类同步 =========
+
+// FetchSiteCIDs 拉取指定资源站的苹果CMS分类列表（id -> name）
+func FetchSiteCIDs(site model.ResourceSite) ([]model.CIDItem, error) {
+	base, _ := normalizeCMSBase(site.URL)
+	if base == "" {
+		return nil, fmt.Errorf("无法解析资源站接口地址")
+	}
+	var out []model.CIDItem
+	seen := map[int]bool{}
+	for _, r := range fetchCMSCIDs(base) {
+		for _, it := range r.List {
+			if seen[it.ID] {
+				continue
+			}
+			seen[it.ID] = true
+			out = append(out, model.CIDItem{ID: it.ID, Name: it.Name})
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("接口未返回分类信息")
+	}
+	return out, nil
+}
+
+// ProbeSite 单资源站连通性测试：用关键词做一次真实搜索，返回耗时 / 条数 / 样例
+func ProbeSite(site model.ResourceSite, keyword string) model.SiteTestResult {
+	if strings.TrimSpace(keyword) == "" {
+		keyword = "庆余年"
+	}
+	var res model.SiteTestResult
+
+	start := time.Now()
+	got, err := SearchOneSite(site, keyword)
+	res.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		res.Error = err.Error()
+		return res
+	}
+
+	res.OK = true
+	res.Count = len(got)
+	for i, r := range got {
+		if i >= 5 {
+			break
+		}
+		res.Samples = append(res.Samples, r.Title)
+	}
+	if cids, err := FetchSiteCIDs(site); err == nil {
+		res.CIDCount = len(cids)
+	}
+	return res
 }
