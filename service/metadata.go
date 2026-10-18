@@ -169,6 +169,33 @@ func stripDoubanSuffix(t string) string {
 	return strings.TrimSpace(t)
 }
 
+// titleSuffixes 剧名常见的季 / 部 / 语言后缀（不含空格写法，便于同时覆盖两种形式）
+var titleSuffixes = []string{
+	"第一季", "第二季", "第三季", "第四季", "第五季", "第六季",
+	"第1季", "第2季", "第3季", "第4季", "第5季", "第6季",
+	"第一部", "第二部", "第三部", "第四部", "第五部",
+	"粤语版", "国语版", "普通话版", "原声版", "电影版",
+	"粤语", "国语", "普通话",
+}
+
+// stripTitleSuffix 去掉剧名末尾的「第X季 / 第X部 / 语言」等后缀
+// 用于资源站搜索关键词降级（腾讯返回「开心锤锤 第一季」，资源站只有「开心锤锤」）
+func stripTitleSuffix(t string) string {
+	t = strings.TrimSpace(t)
+	for changed := true; changed; {
+		changed = false
+		for _, sep := range titleSuffixes {
+			for _, form := range []string{sep, " " + sep, "·" + sep, "-" + sep} {
+				if strings.HasSuffix(t, form) && len(t) > len(form) {
+					t = strings.TrimSpace(strings.TrimSuffix(t, form))
+					changed = true
+				}
+			}
+		}
+	}
+	return t
+}
+
 // ========== 官方链接兜底解析 ==========
 
 // ResolveOfficialTitle 多层降级从官方链接拿到剧名

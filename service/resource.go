@@ -58,6 +58,42 @@ func SearchOneSite(site model.ResourceSite, keyword string) ([]model.SearchResul
 	return searchOneSite(site, keyword)
 }
 
+// KeywordVariants 生成关键词降级候选（由严到松）：
+// 原名 → 去空格 → 去「第X季/第X部/粤语/国语」等后缀 → 取主名
+//
+// 资源站关键词搜索多为精确分词，官方剧名常带「空格 + 季/语言」后缀
+// （如腾讯返回「开心锤锤 第一季」，资源站只有「开心锤锤」），
+// 直接用原剧名会 0 命中，需要逐级放宽后再搜。
+func KeywordVariants(name string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+
+	norm := strings.Join(strings.Fields(name), " ") // 压缩连续空白
+	add(norm)
+
+	noSpace := strings.ReplaceAll(norm, " ", "")
+	add(noSpace)
+
+	stripped := stripTitleSuffix(noSpace)
+	add(stripped)
+
+	// 主名：第一个空格 / 分隔符之前的片段
+	for _, s := range []string{norm, stripped} {
+		if idx := strings.IndexAny(s, " /|\\-_·:：,，"); idx > 0 {
+			add(s[:idx])
+		}
+	}
+	return out
+}
+
 // IsAppleCMSType 判断资源站类型是否为苹果CMS 采集接口
 // 兼容 applecms / applemcms / acms / cms 几种写法
 func IsAppleCMSType(t string) bool {

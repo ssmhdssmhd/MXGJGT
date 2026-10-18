@@ -126,7 +126,7 @@ func handleClean(c *gin.Context) {
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {
 		resp.Code = 404
-		resp.Msg = "未在资源站中匹配到资源"
+		resp.Msg = noMatchMsg(offSite.Title)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -145,9 +145,18 @@ func handleSearch(c *gin.Context) {
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {
 		resp.Code = 404
-		resp.Msg = "未在资源站中匹配到资源"
+		resp.Msg = noMatchMsg(wd)
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// noMatchMsg 未命中提示：附上已尝试过的搜索关键词，便于排查是「识别错剧名」还是「资源站没收录」
+func noMatchMsg(title string) string {
+	msg := "未在资源站中匹配到资源"
+	if vs := service.KeywordVariants(title); len(vs) > 0 {
+		msg += "（已尝试关键词：" + strings.Join(vs, " / ") + "）"
+	}
+	return msg
 }
 
 // resolvePlay 解析剧名+集数 → 最佳替换播放地址
@@ -170,7 +179,15 @@ func resolvePlay(title, episode, siteName string) (jm, jj, url string, best *mod
 	}
 
 	// 2. 搜索 + 选最佳
-	var results = service.SearchResource(title, episode)
+	// 关键词逐级降级重试：原名 → 去空格 → 去「第X季/部/语言」后缀 → 主名
+	// （资源站关键词搜索多为精确分词，官方剧名带后缀时会 0 命中）
+	var results []model.SearchResult
+	for _, kw := range service.KeywordVariants(title) {
+		if got := service.SearchResource(kw, episode); len(got) > 0 {
+			results = got
+			break
+		}
+	}
 	var picked *model.SearchResult
 
 	// 优先映射的资源站 + 匹配度高的
