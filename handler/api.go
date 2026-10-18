@@ -30,6 +30,7 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.POST("/site/auto",   handleAdminAutoCMS)
 			admin.GET("/site/test",    handleAdminTestSite)
 			admin.GET("/site/search",  handleAdminSearchSite)
+			admin.GET("/site/detail",  handleAdminSiteDetail)
 			admin.POST("/site/sync",   handleAdminSyncSite)
 			admin.POST("/site",        handleAdminAddSite)
 			admin.PUT("/site/:id",     handleAdminUpdateSite)

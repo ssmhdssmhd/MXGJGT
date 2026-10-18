@@ -257,6 +257,47 @@ func handleAdminSearchSite(c *gin.Context) {
 	})
 }
 
+// handleAdminSiteDetail GET /api/admin/site/detail?id=&rid=
+// 查看某部资源的详情与剧集播放列表（后台可直接跳转播放 / 复制地址）
+func handleAdminSiteDetail(c *gin.Context) {
+	site, ok := findSite(siteIDFromQuery(c))
+	if !ok {
+		c.JSON(200, model.Fail(404, "未找到资源站"))
+		return
+	}
+	rid := strings.TrimSpace(c.Query("rid"))
+	if rid == "" {
+		c.JSON(200, model.Fail(400, "缺少 rid 参数（资源ID）"))
+		return
+	}
+	if !service.IsAppleCMSType(site.Type) || site.DetailURL == "" {
+		c.JSON(200, model.Fail(400, "该资源站不支持详情（需要苹果CMS 类型且已配置详情地址）"))
+		return
+	}
+
+	res, eps, err := service.FetchDetail(site, rid)
+	if err != nil {
+		c.JSON(200, model.Fail(400, "获取详情失败: "+err.Error()))
+		return
+	}
+	if res == nil {
+		c.JSON(200, model.Fail(404, "未获取到详情，请检查详情地址模板是否正确"))
+		return
+	}
+
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  fmt.Sprintf("共 %d 集", len(eps)),
+		Data: map[string]any{
+			"site":     site.Name,
+			"detail":   res,
+			"episodes": eps,
+			"count":    len(eps),
+		},
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
 // handleAdminSyncSite POST /api/admin/site/sync?id=
 // 同步资源站分类：重新拉取苹果CMS分类列表并写回 cid
 func handleAdminSyncSite(c *gin.Context) {

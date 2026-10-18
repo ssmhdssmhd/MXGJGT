@@ -1,3 +1,66 @@
+MXGJGT v0.0.10 202610180115
+============================
+
+## 后台新增「资源详情 + 播放」：搜索到剧集后可直接查看详情并播放
+
+> 需求：后台资源站那里可以查看详情，到可以播放。
+
+### ✨ 新增
+
+**后端接口** `GET /api/admin/site/detail?id=&rid=`（需登录）
+
+- `id`：资源站 ID 或名称；`rid`：资源ID（搜索结果里的 `resource_id`）
+- 走资源站自身的详情接口（`detail_url` + `ac=detail&ids={id}`），返回：
+  - `detail`：剧名 / 分类 / 备注 / 资源ID / 播放源
+  - `episodes`：剧集列表 `[{episode:"第1集", url:"..."}]`
+- 错误分支：未登录 `401`、缺 `rid` `400`、站点不支持详情 `400`、未取到详情 `404`、站点不存在 `404`
+
+**前端** 资源站 →「搜索」→ 结果每行新增「详情」按钮
+
+- 详情弹窗（加宽版）：信息区（剧名 / 分类 / 备注 / 资源ID / 播放源）+ 剧集表格（集数 / 播放地址 / 操作）
+- 每集两个操作：
+  - 「播放」→ `<a target="_blank" rel="noopener noreferrer">` 新窗口打开该集播放页（可直接观看）
+  - 「复制」→ 复制播放地址（HTTPS 用 clipboard API，**HTTP 环境自动回退 `execCommand`**，因为 `navigator.clipboard` 在非安全上下文不可用）
+- 「返回搜索」回到搜索弹窗并**保留关键词与结果**；「关闭」清空弹窗
+- 剧集最多渲染 300 行，避免超长剧集卡顿
+
+### 📋 实测（本地双资源站 + 浏览器）
+
+```
+吉吉资源 M3U8  → 搜索 狂飙 → 20 条，每行有「详情」
+  详情「300万启动金重生者的财富狂飙」/ 短剧 / 已完结 / 78209 / jjzy$$$jjm3u8
+  共 79 集；第1集 https://svip.jijiplay5.com/watch/51/4379/... ；第79集 https://svip.jijiplay5.com/watch/1c/cdb7/...
+  「播放」元素：A / href=上述地址 / target=_blank ✅
+  「复制」→ 底部弹出「已复制」提示 ✅
+  「返回搜索」→ 关键词与 20 条结果保留 ✅  「关闭」→ 弹窗清空 ✅
+
+非凡资源      → 搜索 狂飙 → 13 条
+  详情「狂飙」/ 国产剧 / 已完结 / 30434 / feifan$$$ffm3u8 → 共 39 集
+  第01集 https://vod.feifei-kan.com/share/405075699f065e43581f27d67bb68478（域名与吉吉不同，确认按站取详情）✅
+
+接口直接调用：
+  /api/admin/site/detail?id=jjm3u8&rid=78209 → code 200「共 79 集」✅
+  未登录                                      → 401 ✅
+  缺 rid                                      → 400「缺少 rid 参数（资源ID）」✅
+  rid 不存在                                  → 404「未获取到详情，请检查详情地址模板是否正确」✅
+  站点不存在                                  → 404「未找到资源站」✅
+
+浏览器控制台：无 JS 报错；接口请求全部 200。
+```
+
+### 📁 变更文件
+
+- `handler/admin.go` — 新增 `handleAdminSiteDetail`
+- `handler/api.go` — 挂路由 `GET /api/admin/site/detail`
+- `handler/mxadmin.html` — 搜索结果新增「详情」按钮；新增 `openDetailModal`（详情弹窗 + 剧集播放列表）、`copyText`（含 HTTP 回退）；`.btn` 加 `text-decoration:none`、`.modal.wide` 加宽
+- `model/version.go`、`Makefile`、`config/config.go` — 版本号 0.0.10
+- `README.md` — 后台功能表新增「详情 / 播放」
+
+> 说明：「播放」打开的是采集站的播放页（`vod_play_url` 里的地址），并非直链 m3u8，因此不内嵌播放器；
+> 如需后台内嵌播放，需要额外引入 HLS 播放库（hls.js），会打破当前「零外部依赖」的设计，暂未做。
+
+---
+
 MXGJGT v0.0.9 202610180058
 ===========================
 

@@ -29,7 +29,8 @@
   .field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;outline:none;transition:.15s}
   .field input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(47,107,255,.15)}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;cursor:pointer;
-    padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;transition:.15s}
+    padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;transition:.15s;
+    text-decoration:none;font-family:inherit}
   .btn.primary{width:100%;color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand2))}
   .btn.primary:hover{filter:brightness(1.07)}
   .btn.ghost{background:#eef1f8;color:var(--text)}
@@ -77,6 +78,7 @@
   /* 弹窗 */
   .mask{position:fixed;inset:0;background:rgba(10,14,30,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   .modal{background:#fff;border-radius:16px;width:min(560px,96vw);max-height:90vh;overflow:auto;padding:22px}
+  .modal.wide{width:min(900px,96vw)}
   .modal h3{margin:0 0 16px;font-size:16px}
   .modal .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .modal .grid .field.full{grid-column:1/-1}
@@ -376,31 +378,36 @@
     };
   }
 
-  // 搜索：在该资源站内搜索关键词，列出结果供人工核对
-  function openSearchModal(site) {
+  // 搜索：在该资源站内搜索关键词，列出结果供人工核对；每条结果可点「详情」看剧集并播放
+  function openSearchModal(site, wd) {
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal"><h3>搜索资源站：' + esc(site.name) + "</h3>" +
       '<div class="field"><label>关键词</label><input id="s-wd" placeholder="输入剧名，如：狂飙"></div>' +
       '<footer><button class="btn ghost" id="s-close">关闭</button><button class="btn primary" id="s-go">搜索</button></footer>' +
       '<div id="s-result" style="margin-top:16px"></div></div></div>';
     $("#s-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#s-wd").value = wd || "";
     function doSearch() {
-      var wd = $("#s-wd").value.trim();
-      if (!wd) { toast("请输入关键词"); return; }
+      var kw = $("#s-wd").value.trim();
+      if (!kw) { toast("请输入关键词"); return; }
       $("#s-result").innerHTML = '<p class="empty">搜索中...</p>';
-      api("/api/admin/site/search?id=" + encodeURIComponent(site.id) + "&wd=" + encodeURIComponent(wd))
+      api("/api/admin/site/search?id=" + encodeURIComponent(site.id) + "&wd=" + encodeURIComponent(kw))
         .then(function (r) {
           if (r.code !== 200) { $("#s-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
           var d = r.data || {}, list = d.results || [];
           if (!list.length) { $("#s-result").innerHTML = '<p class="empty">未搜索到结果。</p>'; return; }
-          var h = ['<p class="empty">命中 ' + esc(d.count) + " 条：</p>",
-            "<table><thead><tr><th>标题</th><th>分类</th><th>备注</th><th>资源ID</th></tr></thead><tbody>"];
+          var h = ['<p class="empty">命中 ' + esc(d.count) + " 条，点「详情」查看剧集与播放地址：</p>",
+            "<table><thead><tr><th>标题</th><th>分类</th><th>备注</th><th>资源ID</th><th>操作</th></tr></thead><tbody>"];
           list.slice(0, 50).forEach(function (x) {
             h.push("<tr><td>" + esc(x.title) + "</td><td>" + esc(x.type) + "</td><td>" + esc(x.remark) +
-              "</td><td><code class='mono'>" + esc(x.resource_id) + "</code></td></tr>");
+              "</td><td><code class='mono'>" + esc(x.resource_id) + "</code></td>" +
+              "<td><button class='btn ghost sm' data-rid='" + esc(x.resource_id) + "'>详情</button></td></tr>");
           });
           h.push("</tbody></table>");
-          $("#s-result").innerHTML = h.join("");
+          var box = $("#s-result"); box.innerHTML = h.join("");
+          box.querySelectorAll("button[data-rid]").forEach(function (b) {
+            b.addEventListener("click", function () { openDetailModal(site, b.dataset.rid, kw); });
+          });
         })
         .catch(function (e) { $("#s-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
     }
@@ -408,6 +415,69 @@
     $("#s-wd").addEventListener("keydown", function (ev) {
       if (ev.key === "Enter") { ev.preventDefault(); doSearch(); }
     });
+    if (wd) doSearch();
+  }
+
+  // 详情：查看单部资源的剧集列表，可直接跳转播放 / 复制地址
+  function openDetailModal(site, rid, backWd) {
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal wide"><h3>资源详情 · ' + esc(site.name) + "</h3>" +
+      '<div id="d-body"><p class="empty">加载中...</p></div>' +
+      '<footer><button class="btn ghost" id="d-back">返回搜索</button><button class="btn ghost" id="d-close">关闭</button></footer></div></div>';
+    $("#d-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#d-back").onclick = function () { openSearchModal(site, backWd); };
+
+    api("/api/admin/site/detail?id=" + encodeURIComponent(site.id) + "&rid=" + encodeURIComponent(rid))
+      .then(function (r) {
+        var box = $("#d-body");
+        if (r.code !== 200) { box.innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+        var d = r.data || {}, v = d.detail || {}, eps = d.episodes || [];
+        var h = ['<div class="kv" style="margin-bottom:6px">',
+          "<div><b>剧名</b>" + esc(v.title) + "</div>",
+          "<div><b>分类</b>" + esc(v.type || "-") + "</div>",
+          "<div><b>备注</b>" + esc(v.remark || "-") + "</div>",
+          "<div><b>资源ID</b>" + esc(v.resource_id) + "</div>",
+          "<div><b>播放源</b>" + esc(v.play_from || "-") + "</div>",
+          "</div>"];
+        if (!eps.length) {
+          h.push('<p class="empty">未解析到剧集播放地址，请检查该资源站的详情地址模板。</p>');
+          box.innerHTML = h.join("");
+          return;
+        }
+        h.push('<p class="empty">共 ' + esc(eps.length) + " 集，点「播放」在新窗口打开播放页，或「复制」取地址：</p>");
+        h.push("<table><thead><tr><th>集数</th><th>播放地址</th><th>操作</th></tr></thead><tbody>");
+        eps.slice(0, 300).forEach(function (e) {
+          h.push("<tr><td>" + esc(e.episode) + "</td>" +
+            "<td><code class='mono'>" + esc(e.url) + "</code></td>" +
+            "<td><div class='ops'>" +
+              '<a class="btn ghost sm" href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer">播放</a>' +
+              "<button class='btn ghost sm' data-copy='" + esc(e.url) + "'>复制</button>" +
+            "</div></td></tr>");
+        });
+        h.push("</tbody></table>");
+        box.innerHTML = h.join("");
+        box.querySelectorAll("button[data-copy]").forEach(function (b) {
+          b.addEventListener("click", function () { copyText(b.dataset.copy); });
+        });
+      })
+      .catch(function (e) { $("#d-body").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+  }
+
+  // 复制到剪贴板（HTTPS 用 clipboard API，HTTP 环境回退 execCommand）
+  function copyText(txt) {
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast("已复制"); }
+      catch (err) { toast("复制失败，请手动复制"); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(txt).then(function () { toast("已复制"); }, fallback);
+      return;
+    }
+    fallback();
   }
 
   // 同步：重新拉取分类列表并写回 CID
