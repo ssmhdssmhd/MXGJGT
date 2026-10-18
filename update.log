@@ -1,3 +1,57 @@
+MXGJGT v0.0.11 202610181230
+============================
+
+## 修复腾讯移动端链接解析不到：从 query 提取 cid + 「合集篇」后缀降级匹配
+
+> 现象：`/api/clean/?url=https://m.v.qq.com/x/m/play?cid=qyqaod1cfohr8st&vid=x00272bw5lv&ptag=hippySearch&pageType=long`
+> 返回 `404 未在资源站中匹配到资源（已尝试关键词：【腾讯视频】）`。
+
+### 🐞 根因（两层）
+
+**1. cid 在 query 参数里，没被提取到**
+
+`extractTencentCID` 只认路径形式 `/cover/{cid}`、`/page/{cid}.html`；而这串链接是移动端播放页，
+cid 在 `?cid=xxx&vid=xxx` 里 → 取不到 cid → 腾讯官方接口压根没被调用 → 剧名退化成平台名
+「【腾讯视频】」→ 采集站搜「【腾讯视频】」→ 0 命中 → 404。
+
+> 接口本身没问题：`https://node.video.qq.com/x/api/float_vinfo2?cid=qyqaod1cfohr8st` 正常返回 `斗罗大陆合集篇`。
+
+**2. 即使取到 cid 也仍会 404**
+
+官方剧名是「斗罗大陆**合集篇**」，采集站只有「斗罗大陆」；而 `titleSuffixes` 只剥离
+「第X季 / 第X部 / 语言」后缀，没有「合集篇」这类 → 关键词降级候选词全部落空。
+
+### ✅ 修复
+
+1. `service/metadata.go` `extractTencentCID`：**先读 query 里的 `cid`**（校验为 6 位以上纯字母数字，
+   避免误取），路径形式 `/cover/{cid}/{vid}.html`、`/page/{cid}.html` 保留为兜底；
+2. `service/metadata.go` `titleSuffixes`：新增「合集篇 / 合集版 / 合集 / 完整版 / 纯享版 / 精编版 / 特辑版」，
+   使「斗罗大陆合集篇」能降级出「斗罗大陆」再去采集站匹配。
+
+### 📋 实测（本地跑 main 代码，修复前后对比）
+
+```
+① 你这条链接（m.v.qq.com/x/m/play?cid=qyqaod1cfohr8st&vid=x00272bw5lv）
+   修复前： 404  jm=【腾讯视频】
+   修复后： 200  jm=斗罗大陆合集篇  jj=第100集
+                url=https://svip.jijiplay18.com/watch/86/e784/99eeb33f/b9cac16b7555b50767
+           （vid 被正确用上，因此返回该 vid 对应的「第100集」）
+
+② 回归（与线上逐条比对，结果一致）
+   v.qq.com/x/cover/{cid}/{vid}.html（开心锤锤） 200 → 200，地址不变
+   爱奇艺 狂飙                                   200 → 200，地址不变
+   优酷随机ID / 百度链接                          404 → 404，不变
+   ?cid=a 非法值                                  404（沙箱无 Chrome 的抓取差异，与本次改动无关，
+                                                  已用「未修改的 main 二进制」对比确认）
+```
+
+### 📁 变更文件
+
+- `service/metadata.go` — `extractTencentCID` 支持 query 形式 cid；`titleSuffixes` 新增合集类后缀
+- `model/version.go`、`Makefile`、`config/config.go` — 版本号 0.0.11
+
+---
+
 MXGJGT v0.0.10 202610180115
 ============================
 

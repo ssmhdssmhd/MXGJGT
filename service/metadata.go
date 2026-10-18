@@ -70,8 +70,22 @@ type TencentInfo struct {
 
 var tencentCIDRe = regexp.MustCompile(`/(?:cover|page)/([A-Za-z0-9]{8,})(?:\.html|/|$)`)
 
+// tencentCIDValueRe query 参数形式的 cid 校验（纯字母数字，长度合理）
+var tencentCIDValueRe = regexp.MustCompile(`^[A-Za-z0-9]{6,}$`)
+
 // extractTencentCID 从 v.qq.com 链接里提取 cover id
+// 支持两类常见形式：
+//  1. 路径形式： https://v.qq.com/x/cover/{cid}/{vid}.html 、 https://v.qq.com/x/page/{cid}.html
+//  2. 参数形式： https://m.v.qq.com/x/m/play?cid={cid}&vid={vid} 、 /play.html?cid={cid}&vid={vid}
 func extractTencentCID(u *url.URL) string {
+	// 先看 query 参数（移动端播放页 / 分享链接的 cid 都在这里）
+	q := u.Query()
+	for _, k := range []string{"cid", "cover_id", "coverId", "cId"} {
+		if v := strings.TrimSpace(q.Get(k)); v != "" && tencentCIDValueRe.MatchString(v) {
+			return v
+		}
+	}
+	// 再看路径（含完整 URL 串兜底）
 	if m := tencentCIDRe.FindStringSubmatch(u.Path); len(m) >= 2 {
 		return m[1]
 	}
@@ -176,6 +190,8 @@ var titleSuffixes = []string{
 	"第一部", "第二部", "第三部", "第四部", "第五部",
 	"粤语版", "国语版", "普通话版", "原声版", "电影版",
 	"粤语", "国语", "普通话",
+	// 合集 / 特辑类后缀（腾讯「斗罗大陆合集篇」→ 资源站「斗罗大陆」）
+	"合集篇", "合集版", "合集", "完整版", "纯享版", "精编版", "特辑版",
 }
 
 // stripTitleSuffix 去掉剧名末尾的「第X季 / 第X部 / 语言」等后缀
