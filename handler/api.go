@@ -64,6 +64,7 @@ func registerAdminUI(r *gin.Engine) {
 	r.GET(p, handleAdminPage)
 	r.GET(p+"/", handleAdminPage)
 	r.GET(p+"/assets/logo.png", handleAdminLogo)
+	r.GET(p+"/assets/logo-mark.png", handleAdminLogoMark)
 	r.GET(p+"/assets/favicon.png", handleAdminFavicon)
 	r.GET(p+"/assets/hls.js", handleAdminHlsJS)
 	r.POST(p+"/api/login", handleAdminLogin)

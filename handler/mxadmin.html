@@ -7,59 +7,117 @@
 <link rel="icon" id="favicon">
 <style>
   :root{
-    --brand:#2f6bff; --brand2:#7c4dff; --ok:#16a34a; --err:#e5484d;
-    --bg:#f4f6fb; --card:#ffffff; --text:#1f2430; --sub:#6b7280;
-    --line:#e6e9f0; --radius:14px;
+    --brand:#a855f7; --brand2:#8b5cf6; --deep:#6366f1; --ok:#16a34a; --err:#e5484d;
+    --ink:#3f3563; --sub:#8b85a1; --line:#eee9f8;
+    --grad:linear-gradient(120deg,#f02fc2 0%,#a855f7 48%,#6366f1 100%);
+    --radius:20px;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg)}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--grad);background-attachment:fixed;min-height:100vh}
   a{color:var(--brand)}
   .hide{display:none !important}
+  svg.i{stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ===== 通用按钮 ===== */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;cursor:pointer;
+    padding:11px 18px;border-radius:11px;font-size:14px;font-weight:600;transition:.15s;text-decoration:none;font-family:inherit}
+  .btn.primary{color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand2))}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn.ghost{background:#f3effb;color:#5b5378}
+  .btn.sm{padding:7px 12px;font-size:13px;border-radius:9px}
+  .btn.danger{background:#fdecec;color:var(--err)}
 
   /* ===== 登录 ===== */
-  #login-view{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:radial-gradient(1200px 600px at 20% 10%,#1e2a5a 0%,#0e1430 45%,#070a18 100%)}
-  .login-card{width:min(400px,92vw);background:#fff;border-radius:20px;padding:36px 30px 30px;
-    box-shadow:0 30px 80px rgba(0,0,0,.45);text-align:center}
+  #login-view{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--grad);padding:16px}
+  .login-card{width:min(400px,92vw);background:rgba(255,255,255,.97);border-radius:24px;padding:34px 30px 28px;
+    box-shadow:0 30px 80px rgba(76,29,149,.38);text-align:center;backdrop-filter:blur(10px)}
   .login-card img{width:190px;max-width:70%;margin:0 auto 14px;display:block}
   .login-card h1{font-size:18px;margin:0 0 4px}
   .login-card p.sub{color:var(--sub);font-size:13px;margin:0 0 22px}
   .field{text-align:left;margin-bottom:14px}
   .field label{display:block;font-size:13px;color:var(--sub);margin-bottom:6px}
-  .field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;outline:none;transition:.15s}
-  .field input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(47,107,255,.15)}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;cursor:pointer;
-    padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;transition:.15s;
-    text-decoration:none;font-family:inherit}
-  .btn.primary{width:100%;color:#fff;background:linear-gradient(135deg,var(--brand),var(--brand2))}
-  .btn.primary:hover{filter:brightness(1.07)}
-  .btn.ghost{background:#eef1f8;color:var(--text)}
-  .btn.sm{padding:7px 12px;font-size:13px;border-radius:8px}
-  .btn.danger{background:#fdecec;color:var(--err)}
+  .field input,.field select{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:11px;font-size:15px;outline:none;transition:.15s;font-family:inherit;background:#fff;color:var(--ink)}
+  .field input:focus,.field select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(168,85,247,.16)}
+  .btn.primary.block{width:100%}
   .err{color:var(--err);font-size:13px;min-height:18px;margin-top:10px}
 
-  /* ===== 后台 ===== */
-  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
-    padding:12px 20px;background:#fff;border-bottom:1px solid var(--line)}
-  header img{height:30px}
-  header .title{font-weight:700}
-  header .ver{font-size:12px;color:var(--sub)}
-  header .spacer{flex:1}
-  nav{display:flex;gap:6px;padding:12px 20px 0;max-width:1080px;margin:0 auto;flex-wrap:wrap}
-  nav button{border:0;background:#eef1f8;color:var(--text);padding:9px 16px;border-radius:999px;
-    font-size:14px;cursor:pointer}
-  nav button.on{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff}
-  main{max-width:1080px;margin:0 auto;padding:16px 20px 60px}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-top:14px}
-  .panel h2{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:10px}
-  .panel h2 .spacer{flex:1}
+  /* ===== 后台外壳 ===== */
+  .wrap{display:flex;gap:18px;padding:18px;max-width:1240px;margin:0 auto;min-height:100vh}
+  .sidebar{width:208px;flex:none;background:#fff;border-radius:24px;padding:22px 14px 14px;
+    display:flex;flex-direction:column;box-shadow:0 18px 44px rgba(76,29,149,.20);transition:width .2s}
+  .brand{display:flex;flex-direction:column;align-items:center;gap:9px;padding:2px 0 20px}
+  .badge{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#fde9ff,#ece4ff);
+    display:flex;align-items:center;justify-content:center;box-shadow:0 8px 18px rgba(168,85,247,.28)}
+  .badge img{width:40px;height:40px;display:block}
+  .bname{font-size:11px;letter-spacing:2.5px;font-weight:800;color:var(--brand)}
+  .menu{display:flex;flex-direction:column;gap:6px}
+  .menu button{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;color:#6d6588;
+    font-size:14px;padding:11px 14px;border-radius:13px;cursor:pointer;text-align:left;font-family:inherit;transition:.16s;white-space:nowrap}
+  .menu button .ic{width:18px;height:18px;flex:none}
+  .menu button:hover{background:#f5f1ff;color:var(--brand)}
+  .menu button.on{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;box-shadow:0 10px 22px rgba(139,92,246,.38)}
+  .burger{margin-top:auto;border:0;background:transparent;color:#b8b2c9;cursor:pointer;padding:9px;border-radius:11px;
+    display:flex;align-items:center;justify-content:center}
+  .burger:hover{background:#f5f1ff;color:var(--brand)}
+  .sidebar.mini{width:76px}
+  .sidebar.mini .bname,.sidebar.mini .menu button span{display:none}
+  .sidebar.mini .menu button{justify-content:center;padding:12px}
+  .sidebar.mini .brand{padding-bottom:14px}
+
+  .main{flex:1;display:flex;flex-direction:column;gap:16px;min-width:0}
+
+  /* 顶栏 */
+  .topbar{display:flex;align-items:center;gap:12px;padding:2px 2px 0}
+  .greet{flex:1;min-width:0}
+  .greet .hi{font-size:12px;color:rgba(255,255,255,.85)}
+  .greet .who{font-size:20px;font-weight:700;color:#fff;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tsearch{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.88);border-radius:999px;padding:9px 16px;width:min(250px,34vw)}
+  .tsearch svg{width:16px;height:16px;stroke:#a9a3bd;flex:none}
+  .tsearch input{border:0;background:transparent;outline:none;font-size:13px;color:var(--ink);width:100%;font-family:inherit}
+  .tsearch input::placeholder{color:#aaa4be}
+  .icob{width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.88);color:#4b3f72;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:15px;font-weight:800;flex:none}
+  .icob:hover{background:#fff}
+  .icob svg{width:18px;height:18px}
+  .icob .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;background:#ef4444;border-radius:50%;border:2px solid #fff}
+  .avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--deep));color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:800;cursor:pointer;border:2px solid rgba(255,255,255,.9);flex:none}
+
+  .content{flex:1;display:flex;flex-direction:column;gap:16px;min-height:0}
+
+  /* 首页 */
+  .home{display:flex;flex-direction:column;gap:16px;flex:1}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .stat{background:rgba(255,255,255,.24);border:1px solid rgba(255,255,255,.42);border-radius:18px;padding:18px;
+    color:#fff;backdrop-filter:blur(6px);min-height:106px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+  .stat .num{font-size:26px;font-weight:800;line-height:1.1}
+  .stat .lbl{font-size:13px;color:rgba(255,255,255,.86)}
+  .home2{display:grid;grid-template-columns:2.1fr 1fr;gap:16px;flex:1;min-height:300px}
+  .hcard{background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.42);border-radius:18px;padding:22px;
+    color:#fff;backdrop-filter:blur(6px);display:flex;flex-direction:column}
+  .hcard h3{margin:0 0 4px;font-size:15px;font-weight:700}
+  .hcard .sub2{font-size:12px;color:rgba(255,255,255,.82);margin-bottom:16px}
+  .quick{display:flex;flex-wrap:wrap;gap:10px}
+  .qbtn{border:0;cursor:pointer;background:rgba(255,255,255,.9);color:#7c3aed;font-weight:700;font-size:13px;
+    padding:11px 16px;border-radius:12px;font-family:inherit}
+  .qbtn:hover{background:#fff}
+  .hcard .center{flex:1;display:flex;align-items:center;justify-content:center;font-size:19px;color:rgba(255,255,255,.92)}
+  .kv2{display:flex;flex-direction:column;gap:12px;font-size:13px}
+  .kv2 div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed rgba(255,255,255,.3);padding-bottom:10px}
+  .kv2 div:last-child{border-bottom:0}
+  .kv2 b{color:rgba(255,255,255,.78);font-weight:600}
+
+  /* 内容面板（白卡） */
+  .card{background:#fff;border-radius:var(--radius);padding:20px;box-shadow:0 14px 34px rgba(76,29,149,.12)}
+  .card h2{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:10px;color:var(--ink)}
+  .card h2 .spacer{flex:1}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   th{color:var(--sub);font-weight:600;font-size:12px}
   tr:last-child td{border-bottom:0}
   .ops{display:flex;gap:6px;flex-wrap:wrap}
-  code.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#374151;
-    background:#f2f4f9;padding:2px 6px;border-radius:6px;word-break:break-all}
+  code.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#4b5563;background:#f5f3fb;padding:2px 6px;border-radius:6px;word-break:break-all}
   .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px}
   .pill.on{background:#e7f7ed;color:var(--ok)}
   .pill.off{background:#f1f2f5;color:var(--sub)}
@@ -67,35 +125,48 @@
   .row .field{margin-bottom:0;flex:1 1 180px}
   .maprow{display:flex;gap:10px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
   .maprow:last-child{border-bottom:0}
-  .maprow .off{font-weight:600;min-width:96px;padding-top:6px}
+  .maprow .off{font-weight:700;min-width:96px;padding-top:6px}
   .checks{display:flex;gap:12px;flex-wrap:wrap;flex:1}
-  .checks label{display:flex;align-items:center;gap:6px;font-size:13px;background:#f5f7fc;
-    padding:6px 10px;border-radius:8px;cursor:pointer}
+  .checks label{display:flex;align-items:center;gap:6px;font-size:13px;background:#f6f3fd;padding:6px 10px;border-radius:9px;cursor:pointer}
   .empty{color:var(--sub);font-size:14px;padding:14px 0}
   .kv{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
   .kv div b{color:var(--sub);font-weight:600;margin-right:6px}
+
   /* 详情弹窗内嵌播放 */
-  .player{background:#0b0e17;border-radius:10px;overflow:hidden;margin-bottom:14px}
+  .player{background:#0b0e17;border-radius:11px;overflow:hidden;margin-bottom:14px}
   .player video{width:100%;max-height:340px;display:block;background:#000}
   .player .pbar{display:flex;align-items:center;gap:10px;padding:8px 10px;color:#c7ccda;font-size:12px}
   .player .pbar .spacer{flex:1}
   .player .pbar .btn{padding:5px 10px;font-size:12px}
 
   /* 弹窗 */
-  .mask{position:fixed;inset:0;background:rgba(10,14,30,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
-  .modal{background:#fff;border-radius:16px;width:min(560px,96vw);max-height:90vh;overflow:auto;padding:22px}
-  .modal.wide{width:min(900px,96vw)}
-  .modal h3{margin:0 0 16px;font-size:16px}
+  .mask{position:fixed;inset:0;background:rgba(40,20,80,.5);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .modal{background:#fff;border-radius:18px;width:min(560px,96vw);max-height:90vh;overflow:auto;padding:22px}
+  .modal.wide{width:min(920px,96vw)}
+  .modal h3{margin:0 0 16px;font-size:16px;display:flex;align-items:center;gap:8px}
   .modal .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .modal .grid .field.full{grid-column:1/-1}
   .modal footer{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
-  .modal textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical}
+  .modal textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:11px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical}
+  .modal .field select{width:100%}
+
   /* 提示 */
   #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
-    background:#111827;color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;opacity:0;
+    background:#2a1e4d;color:#fff;padding:11px 18px;border-radius:11px;font-size:14px;opacity:0;
     pointer-events:none;transition:.25s;z-index:99;max-width:88vw}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  @media(max-width:640px){.modal .grid{grid-template-columns:1fr}header img{height:24px}}
+
+  @media(max-width:960px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .home2{grid-template-columns:1fr}
+    .wrap{flex-direction:column;padding:12px;gap:12px}
+    .sidebar{width:auto;flex-direction:row;align-items:center;padding:10px 12px;gap:10px;overflow:auto}
+    .brand{flex-direction:row;padding:0 6px 0 0}
+    .menu{flex-direction:row;gap:4px}
+    .menu button{white-space:nowrap}
+    .burger{margin-top:0;margin-left:auto}
+    .modal .grid{grid-template-columns:1fr}
+  }
 </style>
 </head>
 <body>
@@ -114,61 +185,128 @@
       <label>密码</label>
       <input id="password" name="password" type="password" placeholder="请输入密码" autocomplete="current-password">
     </div>
-    <button class="btn primary" type="submit">登 录</button>
+    <button class="btn primary block" type="submit">登 录</button>
     <div class="err" id="login-err"></div>
   </form>
 </div>
 
 <!-- ===== 后台主页 ===== -->
 <div id="app-view" class="hide">
-  <header>
-    <img id="logo-header" alt="MXGJGT">
-    <span class="title">MXGJGT 后台</span>
-    <span class="ver" id="hdr-ver"></span>
-    <span class="spacer"></span>
-    <span class="ver" id="hdr-user"></span>
-    <button class="btn ghost sm" id="btn-logout">退出</button>
-  </header>
-
-  <nav>
-    <button data-tab="sites" class="on">资源站管理</button>
-    <button data-tab="maps">平台映射</button>
-    <button data-tab="sys">系统 / 更新</button>
-  </nav>
-
-  <main>
-    <!-- 资源站 -->
-    <section id="tab-sites" class="panel">
-      <h2>资源站列表 <span class="spacer"></span>
-        <button class="btn ghost sm" id="btn-refresh-sites">刷新</button>
-        <button class="btn ghost sm" id="btn-auto">苹果CMS 自动分析</button>
-        <button class="btn primary sm" id="btn-add-site">新增资源站</button>
-      </h2>
-      <div id="sites-box"></div>
-    </section>
-
-    <!-- 映射 -->
-    <section id="tab-maps" class="panel hide">
-      <h2>官方平台 → 资源站 优先映射 <span class="spacer"></span>
-        <button class="btn ghost sm" id="btn-refresh-maps">刷新</button>
-      </h2>
-      <p class="empty">勾选该官方平台优先使用的资源站（可多选，按需保存）。</p>
-      <div id="maps-box"></div>
-    </section>
-
-    <!-- 系统 -->
-    <section id="tab-sys" class="panel hide">
-      <h2>系统信息 <span class="spacer"></span>
-        <button class="btn ghost sm" id="btn-check">检查更新</button>
-      </h2>
-      <div class="kv" id="sys-info"></div>
-      <div style="margin-top:18px" class="row">
-        <button class="btn ghost" id="btn-reload">重载配置</button>
-        <button class="btn primary" id="btn-update">立即更新</button>
+  <div class="wrap">
+    <!-- 侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="badge"><img id="logo-mark" alt="MXGJGT"></div>
+        <div class="bname">MXGJGT</div>
       </div>
-      <p class="empty" id="update-msg"></p>
-    </section>
-  </main>
+      <nav class="menu">
+        <button data-tab="home" class="on">
+          <svg class="i ic" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.3V20h13V9.3"/><path d="M10 20v-5h4v5"/></svg>
+          <span>首页</span>
+        </button>
+        <button data-tab="sites">
+          <svg class="i ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+          <span>资源站管理</span>
+        </button>
+        <button data-tab="maps">
+          <svg class="i ic" viewBox="0 0 24 24"><path d="M9.5 14.5l5-5"/><path d="M10.6 6.6l1.7-1.7a3.6 3.6 0 0 1 5.1 5.1l-1.7 1.7"/><path d="M13.4 17.4l-1.7 1.7a3.6 3.6 0 0 1-5.1-5.1l1.7-1.7"/></svg>
+          <span>平台映射</span>
+        </button>
+        <button data-tab="sys">
+          <svg class="i ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></svg>
+          <span>系统 · 更新</span>
+        </button>
+      </nav>
+      <button class="burger" id="btn-burger" title="收起 / 展开">
+        <svg class="i" viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </aside>
+
+    <!-- 主区 -->
+    <div class="main">
+      <!-- 顶栏 -->
+      <div class="topbar">
+        <div class="greet">
+          <div class="hi" id="g-hi">你好，</div>
+          <div class="who" id="g-who">管理员</div>
+        </div>
+        <div class="tsearch">
+          <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+          <input id="global-wd" placeholder="关键词搜索">
+        </div>
+        <button class="icob" id="btn-help" title="帮助">?</button>
+        <button class="icob" id="btn-bell" title="通知">
+          <svg class="i" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 4.5 1.6 5.6 1.6 5.6H4.4S6 13.5 6 9z"/><path d="M9.6 18.4a2.6 2.6 0 0 0 4.8 0"/></svg>
+          <i class="dot"></i>
+        </button>
+        <div class="avatar" id="btn-avatar" title="账号">M</div>
+      </div>
+
+      <!-- 内容 -->
+      <div class="content">
+        <!-- 首页 / 概览 -->
+        <section id="tab-home" class="home">
+          <div class="stats">
+            <div class="stat"><div class="num" id="st-sites">0</div><div class="lbl">资源站总数</div></div>
+            <div class="stat"><div class="num" id="st-enabled">0</div><div class="lbl">已启用资源站</div></div>
+            <div class="stat"><div class="num" id="st-maps">0</div><div class="lbl">平台映射</div></div>
+            <div class="stat"><div class="num" id="st-ver">-</div><div class="lbl">当前版本</div></div>
+          </div>
+          <div class="home2">
+            <div class="hcard">
+              <h3>快速操作</h3>
+              <div class="sub2">常用入口，一键直达</div>
+              <div class="quick">
+                <button class="qbtn" id="q-add">＋ 新增资源站</button>
+                <button class="qbtn" id="q-auto">苹果CMS 自动分析</button>
+                <button class="qbtn" id="q-search">搜索资源</button>
+                <button class="qbtn" id="q-check">检查更新</button>
+                <button class="qbtn" id="q-reload">重载配置</button>
+              </div>
+              <div class="center" id="home-hint">内容区</div>
+            </div>
+            <div class="hcard">
+              <h3>系统状态</h3>
+              <div class="sub2">当前运行信息</div>
+              <div class="kv2" id="home-sys"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 资源站 -->
+        <section id="tab-sites" class="card hide">
+          <h2>资源站列表 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-refresh-sites">刷新</button>
+            <button class="btn ghost sm" id="btn-auto">苹果CMS 自动分析</button>
+            <button class="btn primary sm" id="btn-add-site">新增资源站</button>
+          </h2>
+          <div id="sites-box"></div>
+        </section>
+
+        <!-- 映射 -->
+        <section id="tab-maps" class="card hide">
+          <h2>官方平台 → 资源站 优先映射 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-refresh-maps">刷新</button>
+          </h2>
+          <p class="empty">勾选该官方平台优先使用的资源站（可多选，按需保存）。</p>
+          <div id="maps-box"></div>
+        </section>
+
+        <!-- 系统 -->
+        <section id="tab-sys" class="card hide">
+          <h2>系统信息 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-check">检查更新</button>
+          </h2>
+          <div class="kv" id="sys-info"></div>
+          <div style="margin-top:18px" class="row">
+            <button class="btn ghost" id="btn-reload">重载配置</button>
+            <button class="btn primary" id="btn-update">立即更新</button>
+          </div>
+          <p class="empty" id="update-msg"></p>
+        </section>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -182,14 +320,16 @@
   if (!BASE) BASE = "/mx";
   var API = BASE + "/api";
 
-  // logo / favicon 由服务端自托管（内嵌二进制），不依赖外部图床
+  // logo / favicon / 侧边栏徽标 均由服务端自托管（内嵌二进制），不依赖外部图床
   document.getElementById("favicon").setAttribute("href", BASE + "/assets/favicon.png");
-  ["logo-login", "logo-header"].forEach(function (id) {
+  ["logo-login", "logo-mark"].forEach(function (id) {
     var el = document.getElementById(id);
-    if (el) el.setAttribute("src", BASE + "/assets/logo.png");
+    if (!el) return;
+    el.setAttribute("src", BASE + "/assets/" + (id === "logo-mark" ? "logo-mark.png" : "logo.png"));
   });
 
   function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   function esc(v) {
     return String(v == null ? "" : v).replace(/[&<>"']/g, function (m) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m];
@@ -215,28 +355,59 @@
   }
 
   // ===== 视图切换 =====
-  function showLogin() { $("#login-view").classList.remove("hide"); $("#app-view").classList.add("hide"); $("#hdr-user").textContent = ""; }
+  function showLogin() {
+    $("#login-view").classList.remove("hide");
+    $("#app-view").classList.add("hide");
+  }
+
   // 运行时版本信息：当前版本来自服务端，远程版本由「检查更新」填充
   var verData = {}, remoteVer = "未检查";
+  var allSites = [], allMaps = [];
+
   function renderSys() {
     var d = verData;
-    $("#hdr-ver").textContent = "v" + (d.version || "?");
     var rv = remoteVer;
     if (d.remote_checked && d.remote_error) rv = "检查失败";
     $("#sys-info").innerHTML =
       '<div><b>当前版本</b>v' + esc(d.version || "?") + "</div>" +
       '<div><b>远程版本</b>' + esc(rv) + "</div>" +
-      '<div><b>构建时间</b>' + esc(d.build) + "</div>" +
+      '<div><b>构建时间</b>' + esc(d.build || "-") + "</div>" +
       '<div><b>更新仓库</b>' + esc(d.repo_url || "-") + "</div>" +
       '<div><b>定时更新</b>' + (d.updater ? "已开启" : "已关闭") + "</div>";
+    // 首页系统状态
+    $("#home-sys").innerHTML =
+      "<div><span>当前版本</span><b>v" + esc(d.version || "?") + "</b></div>" +
+      "<div><span>远程版本</span><b>" + esc(rv) + "</b></div>" +
+      "<div><span>构建时间</span><b>" + esc(d.build || "-") + "</b></div>" +
+      "<div><span>定时更新</span><b>" + (d.updater ? "已开启" : "已关闭") + "</b></div>";
   }
+
+  // 首页统计
+  function renderHome() {
+    $("#st-sites").textContent = allSites.length;
+    $("#st-enabled").textContent = allSites.filter(function (s) { return s.enabled; }).length;
+    $("#st-maps").textContent = allMaps.length;
+    $("#st-ver").textContent = "v" + (verData.version || "?");
+    $("#home-hint").textContent = allSites.length ? "搜索关键字即可定位剧集，详情内可直接播放" : "还没有资源站，先点「新增资源站」或「苹果CMS 自动分析」";
+  }
+
+  function greeting() {
+    var h = new Date().getHours(), t;
+    if (h < 6) t = "凌晨好，";
+    else if (h < 12) t = "早上好，";
+    else if (h < 14) t = "中午好，";
+    else if (h < 18) t = "下午好，";
+    else t = "晚上好，";
+    $("#g-hi").textContent = t;
+  }
+
   function showApp(u) {
-    $("#login-view").classList.add("hide"); $("#app-view").classList.remove("hide");
-    $("#hdr-user").textContent = u ? ("· " + u) : "";
-    api("/api/version").then(function (r) {
-      verData = r.data || {};
-      renderSys();
-    }).catch(function () {});
+    $("#login-view").classList.add("hide");
+    $("#app-view").classList.remove("hide");
+    $("#g-who").textContent = u || "管理员";
+    $("#btn-avatar").textContent = (u || "M").charAt(0).toUpperCase();
+    greeting();
+    api("/api/version").then(function (r) { verData = r.data || {}; renderSys(); renderHome(); }).catch(function () {});
     loadSites(); loadMaps();
   }
 
@@ -251,8 +422,8 @@
       })
       .catch(function (e) { $("#login-err").textContent = e.message || "网络错误"; });
   });
-  $("#btn-logout").addEventListener("click", function () {
-    api(API + "/logout", { method: "POST" }).then(function () { showLogin(); });
+  $("#btn-avatar").addEventListener("click", function () {
+    if (confirm("是否退出登录？")) api(API + "/logout", { method: "POST" }).then(function () { showLogin(); });
   });
   function checkAuth() {
     api(API + "/me").then(function (r) {
@@ -261,25 +432,44 @@
     }).catch(function () { showLogin(); });
   }
 
-  // ===== 标签切换 =====
-  Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (b) {
-    b.addEventListener("click", function () {
-      Array.prototype.forEach.call(document.querySelectorAll("nav button"), function (x) { x.classList.remove("on"); });
-      b.classList.add("on");
-      ["sites", "maps", "sys"].forEach(function (t) {
-        $("#tab-" + t).classList.toggle("hide", t !== b.dataset.tab);
-      });
-      // 首次进入「系统 / 更新」自动查一次远程版本
-      if (b.dataset.tab === "sys" && !verData.remote_checked) checkUpdate(false);
+  // ===== 侧边栏菜单 =====
+  function switchTab(tab) {
+    $$(".menu button").forEach(function (x) { x.classList.toggle("on", x.dataset.tab === tab); });
+    ["home", "sites", "maps", "sys"].forEach(function (t) {
+      var el = $("#tab-" + t);
+      if (el) el.classList.toggle("hide", t !== tab);
     });
+    if (tab === "sys" && !verData.remote_checked) checkUpdate(false);
+    if (tab === "home") renderHome();
+  }
+  $$(".menu button").forEach(function (b) {
+    b.addEventListener("click", function () { switchTab(b.dataset.tab); });
+  });
+  $("#btn-burger").addEventListener("click", function () { $("#sidebar").classList.toggle("mini"); });
+
+  // 顶栏图标 / 全局搜索
+  $("#btn-help").addEventListener("click", function () {
+    alert("MXGJGT 后台使用说明\n\n" +
+      "· 首页：总览统计与快捷入口\n" +
+      "· 资源站管理：新增/编辑/测试/搜索/同步资源站\n" +
+      "· 平台映射：设置各官方平台优先使用的资源站\n" +
+      "· 系统·更新：查看当前/远程版本，重载配置、检查并更新\n" +
+      "· 顶部「关键词搜索」：在已启用的资源站中全局搜索剧集\n" +
+      "· 详情弹窗内点「内嵌播放」可直接观看");
+  });
+  $("#btn-bell").addEventListener("click", function () { toast("暂无新通知"); });
+  $("#global-wd").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); globalSearch($("#global-wd").value.trim()); }
   });
 
   // ===== 资源站 =====
   function loadSites() {
     api("/api/admin/sites").then(function (r) {
-      renderSites((r.data || {}).sites || []);
+      allSites = (r.data || {}).sites || [];
+      renderSites(allSites); renderHome();
     }).catch(function (e) { $("#sites-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
   }
+  function siteById(id) { return allSites.filter(function (x) { return x.id === id; })[0]; }
   function renderSites(sites) {
     if (!sites.length) { $("#sites-box").innerHTML = '<p class="empty">暂无资源站，点击右上角「新增资源站」。</p>'; return; }
     var h = ["<table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>搜索地址</th><th>分类CID</th><th>状态</th><th>操作</th></tr></thead><tbody>"];
@@ -303,7 +493,7 @@
     h.push("</tbody></table>");
     var box = $("#sites-box"); box.innerHTML = h.join("");
     box.querySelectorAll("button[data-act]").forEach(function (btn) {
-      var site = sites.filter(function (x) { return x.id === btn.dataset.id; })[0];
+      var site = siteById(btn.dataset.id);
       btn.addEventListener("click", function () {
         var a = btn.dataset.act;
         if (a === "edit") openSiteModal("edit", site);
@@ -332,11 +522,11 @@
       '<div class="mask"><div class="modal"><h3>' + (isEdit ? "编辑资源站" : "新增资源站") + "</h3>" +
       '<div class="grid">' +
       '<div class="field"><label>名称 *</label><input id="m-name" value="' + esc(site.name) + '"></div>' +
-      (isEdit ? "" : '<div class="field"><label>类型</label><select id="m-type" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px"><option value="applecms">applecms</option><option value="html">html</option></select></div>') +
+      (isEdit ? "" : '<div class="field"><label>类型</label><select id="m-type"><option value="applecms">applecms</option><option value="html">html</option></select></div>') +
       '<div class="field full"><label>搜索地址 *（用 {keyword} 占位）</label><input id="m-url" value="' + esc(site.url) + '"></div>' +
       '<div class="field full"><label>详情地址（用 {id} 占位）</label><input id="m-detail" value="' + esc(site.detail_url) + '"></div>' +
       '<div class="field"><label>分类 CID（逗号分隔）</label><input id="m-cid" value="' + esc(site.cid) + '"></div>' +
-      '<div class="field"><label>启用</label><select id="m-enabled" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px">' +
+      '<div class="field"><label>启用</label><select id="m-enabled">' +
         '<option value="1"' + (site.enabled === false ? "" : " selected") + '>启用</option><option value="0"' + (site.enabled === false ? " selected" : "") + ">停用</option></select></div>" +
       "</div><footer>" +
       '<button class="btn ghost" id="m-cancel">取消</button>' +
@@ -364,11 +554,10 @@
     };
   }
   $("#btn-add-site").onclick = function () { openSiteModal("add", {}); };
+  $("#q-add").onclick = function () { openSiteModal("add", {}); };
   $("#btn-refresh-sites").onclick = loadSites;
 
   // ===== 资源站：测试 / 搜索 / 同步 =====
-
-  // 测试：向该资源站发一次真实请求，返回耗时 / 命中条数 / 样例
   function openTestModal(site) {
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal"><h3>测试资源站：' + esc(site.name) + "</h3>" +
@@ -437,8 +626,51 @@
     if (wd) doSearch();
   }
 
+  // 全局搜索：在已启用的资源站中并发搜索，汇总结果
+  function globalSearch(kw) {
+    if (!kw) { toast("请输入关键词"); return; }
+    var sites = allSites.filter(function (s) { return s.enabled; });
+    if (!sites.length) { toast("暂无已启用的资源站"); return; }
+    sites = sites.slice(0, 8);
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal wide"><h3>全局搜索：' + esc(kw) + "</h3>" +
+      '<div id="g-result"><p class="empty">正在 ' + sites.length + " 个资源站中搜索...</p></div>" +
+      '<footer><button class="btn ghost" id="g-close">关闭</button></footer></div></div>';
+    $("#g-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    var pending = sites.length, groups = [];
+    sites.forEach(function (s) {
+      api("/api/admin/site/search?id=" + encodeURIComponent(s.id) + "&wd=" + encodeURIComponent(kw))
+        .then(function (r) { groups.push({ site: s, list: (r.data || {}).results || [], count: (r.data || {}).count || 0 }); })
+        .catch(function () { groups.push({ site: s, list: [], count: 0, err: true }); })
+        .then(function () { if (--pending === 0) renderGlobal(groups, kw); });
+    });
+  }
+  function renderGlobal(groups, kw) {
+    var box = $("#g-result"); if (!box) return;
+    var total = groups.reduce(function (a, g) { return a + g.list.length; }, 0);
+    if (!total) { box.innerHTML = '<p class="empty">各资源站均未搜索到「' + esc(kw) + "」。</p>"; return; }
+    var h = ['<p class="empty">共命中 ' + total + " 条，点「详情」查看剧集并播放：</p>"];
+    groups.sort(function (a, b) { return b.list.length - a.list.length; }).forEach(function (g) {
+      h.push('<h4 style="margin:14px 0 6px;font-size:13px">' + esc(g.site.name) +
+        ' <span class="pill ' + (g.err ? "off" : "on") + '">' + (g.err ? "请求失败" : g.list.length + " 条") + "</span></h4>");
+      if (!g.list.length) { h.push('<p class="empty">无结果</p>'); return; }
+      h.push("<table><thead><tr><th>标题</th><th>分类</th><th>备注</th><th>资源ID</th><th>操作</th></tr></thead><tbody>");
+      g.list.slice(0, 20).forEach(function (x) {
+        h.push("<tr><td>" + esc(x.title) + "</td><td>" + esc(x.type) + "</td><td>" + esc(x.remark) +
+          "</td><td><code class='mono'>" + esc(x.resource_id) + "</code></td>" +
+          "<td><button class='btn ghost sm' data-gsite='" + esc(g.site.id) + "' data-rid='" + esc(x.resource_id) + "'>详情</button></td></tr>");
+      });
+      h.push("</tbody></table>");
+    });
+    box.innerHTML = h.join("");
+    box.querySelectorAll("button[data-rid]").forEach(function (b) {
+      b.addEventListener("click", function () { openDetailModal(siteById(b.dataset.gsite), b.dataset.rid, kw); });
+    });
+  }
+
   // 详情：查看单部资源的剧集列表，可内嵌播放（直连 m3u8）/ 新窗口播放 / 复制地址
   function openDetailModal(site, rid, backWd) {
+    if (!site) { toast("资源站不存在"); return; }
     stopPlay();
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal wide"><h3>资源详情 · ' + esc(site.name) + "</h3>" +
@@ -469,8 +701,7 @@
           box.innerHTML = h.join("");
           return;
         }
-        h.push('<p class="empty">共 ' + esc(eps.length) + " 集：点「内嵌播放」在本页直接看，或「新窗口」打开播放页、"
-          + "「复制」取地址。</p>");
+        h.push('<p class="empty">共 ' + esc(eps.length) + " 集：点「内嵌播放」在本页直接看，或「新窗口」打开播放页、「复制」取地址。</p>");
         h.push("<table><thead><tr><th>集数</th><th>播放地址</th><th>操作</th></tr></thead><tbody>");
         eps.slice(0, 300).forEach(function (e) {
           h.push("<tr><td>" + esc(e.episode) + "</td>" +
@@ -612,7 +843,7 @@
   }
 
   // 苹果CMS 自动分析
-  $("#btn-auto").onclick = function () {
+  function openAutoModal() {
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal"><h3>苹果CMS 自动分析</h3>' +
       '<div class="field"><label>接口地址（api.php/provide/vod）</label><input id="a-url" placeholder="http://xxx/api.php/provide/vod"></div>' +
@@ -645,13 +876,23 @@
         })
         .catch(function (e) { $("#a-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
     };
+  }
+  $("#btn-auto").onclick = openAutoModal;
+  $("#q-auto").onclick = openAutoModal;
+
+  // 首页「搜索资源」：有站点则打开首个启用站点的搜索弹窗
+  $("#q-search").onclick = function () {
+    var s = allSites.filter(function (x) { return x.enabled; })[0] || allSites[0];
+    if (!s) { toast("暂无资源站，请先新增"); return; }
+    openSearchModal(s);
   };
 
   // ===== 映射 =====
   function loadMaps() {
     api("/api/admin/mappings").then(function (r) {
       var d = r.data || {};
-      renderMaps(d.mappings || [], d.sites || []);
+      allMaps = d.mappings || [];
+      renderMaps(allMaps, d.sites || []); renderHome();
     }).catch(function (e) { $("#maps-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
   }
   function renderMaps(maps, sites) {
@@ -704,10 +945,13 @@
     });
   }
   $("#btn-check").onclick = function () { checkUpdate(true); };
-  $("#btn-reload").onclick = function () {
+  $("#q-check").onclick = function () { switchTab("sys"); checkUpdate(true); };
+  function reloadConf() {
     api("/api/admin/reload", { method: "POST" })
       .then(function (r) { toast(r.code === 200 ? "配置已重载" : (r.msg || "失败")); loadSites(); loadMaps(); });
-  };
+  }
+  $("#btn-reload").onclick = reloadConf;
+  $("#q-reload").onclick = reloadConf;
   $("#btn-update").onclick = function () {
     $("#update-msg").textContent = "正在更新...（下载 → 替换 → 重启，约 20-40 秒）";
     api("/api/update", { method: "POST" })

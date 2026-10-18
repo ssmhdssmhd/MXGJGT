@@ -14,7 +14,7 @@
 | 🎬 影视名 + 集数提取 | 支持从 URL 和官方页面 HTML meta 双重提取 |
 | 🖥️ 官替（官方资源替换） | 官方链接 → 解析剧名+集数 → 资源站匹配 → 输出替换播放地址 |
 | 🔄 三层降级方案 | 方案1 无头浏览器渲染（主）→ 方案2 客户端传参 → 方案3 参数提示（保底） |
-| 🖥️ 网页后台 | 域名 `/mx/` 登录后可视化管理资源站 / 平台映射 / 在线更新 |
+| 🖥️ 网页后台 | 域名 `/mx/` 登录进入侧边栏仪表盘后台，可视化管理资源站 / 平台映射 / 在线更新，支持全局搜索 |
 | 🎞️ 内嵌播放 | 后台资源详情可直接内嵌播放（播放页解析为直链 m3u8，hls.js 播放），无需跳转新窗口 |
 | 🔖 版本检查 | 后台「系统 / 更新」显示 当前版本 + 远程最新版本，支持手动检查更新 |
 | 🛠️ 自动更新 | 查 GitHub Releases → 下载对应平台二进制 → 原子替换 → 自重启 |
@@ -119,12 +119,25 @@ curl http://127.0.0.1:9991/api/version
 
 浏览器访问 `http://<域名>:9991/mx/` 即进入登录页，登录后可视化维护资源站、平台映射与系统更新，无需再用 curl。
 
+后台采用**侧边栏仪表盘**布局：左侧白色圆角侧边栏（顶部 MXLOGO 蝴蝶徽标）承载主导航，右侧为内容区，全屏紫粉渐变背景 + 半透明白色卡片；窄屏（< 960px）自动转为横向顶栏。顶栏含**按时间问候语**（凌晨/上午/中午/下午/晚上）、**全局搜索**（在已启用资源站中并发查询并汇总）与通知 / 帮助 / 用户图标。
+
+侧边栏菜单：
+
+| 菜单 | 说明 |
+|---|---|
+| 🏠 首页 | 概览统计卡片（资源站数 / 已启用 / 平台映射数 / 当前版本）+ 快捷入口 |
+| 📡 资源站管理 | 资源站列表与增删改查 |
+| 🔗 平台映射 | 官方平台 → 优先资源站 |
+| ⚙️ 系统 · 更新 | 版本 / 构建时间 / 更新仓库 / 定时更新状态 |
+
+功能明细：
+
 | 功能 | 说明 |
 |---|---|
 | 🔐 登录 | 默认账号 `admin` / `mxgjgt`（见下方 `admin` 配置，**请务必修改**） |
 | 📡 资源站管理 | 列表 / 新增 / 编辑 / 启用停用 / 删除，含「苹果CMS 自动分析」 |
 | 🧪 测试 | 用关键词向该资源站发一次真实请求，返回 状态 / 耗时 / 命中条数 / 分类数 / 结果样例 |
-| 🔍 搜索 | 在该资源站内搜索关键词，列出 标题 / 分类 / 备注 / 资源ID，人工核对资源质量 |
+| 🔍 搜索 | 在该资源站内搜索关键词，列出 标题 / 分类 / 备注 / 资源ID，人工核对资源质量；顶栏全局搜索可跨多个已启用站点并发查询并汇总 |
 | 🎬 详情 / 内嵌播放 | 在搜索结果点「详情」查看剧集列表；点「内嵌播放」直接在本页播放（播放页自动解析为直链 m3u8，hls.js 播放，失败自动降级「新窗口」），亦可「新窗口」跳转或「复制」地址 |
 | 🔄 同步 | 重新拉取该资源站分类列表并写回 `cid`（不改动搜索地址 / 详情地址） |
 | 🔗 平台映射 | 勾选每个官方平台优先使用的资源站 |
@@ -134,8 +147,8 @@ curl http://127.0.0.1:9991/api/version
 - `/api/admin/*` 全部要求登录后访问，未登录返回 `401`
 - `admin.enabled: false` 时 `/mx/` 与 `/api/admin/*` 统一返回伪装 `404`
 - 后台页面位于 [handler/mxadmin.html](handler/mxadmin.html)，登录鉴权见 [handler/adminauth.go](handler/adminauth.go)
-- Logo / favicon 已**内嵌进二进制**（[handler/assets/](handler/assets) + [handler/adminassets.go](handler/adminassets.go)），
-  由 `/mx/assets/logo.png`、`/mx/assets/favicon.png` 自托管，不依赖 `raw.githubusercontent.com` 等外部图床
+- Logo / favicon / 侧边栏徽标已**内嵌进二进制**（[handler/assets/](handler/assets) + [handler/adminassets.go](handler/adminassets.go)），
+  由 `/mx/assets/logo.png`、`/mx/assets/favicon.png`、`/mx/assets/logo-mark.png` 自托管，不依赖 `raw.githubusercontent.com` 等外部图床
 - 内嵌播放依赖的 **hls.js v1.5.20**（Apache-2.0）同样内嵌进二进制（[handler/assets/hls.min.js](handler/assets/hls.min.js)），
   由 `/mx/assets/hls.js` 自托管、**按需懒加载**，Safari 走原生 HLS 分支不加载该库，Chrome/Edge/Firefox 才拉取
 
@@ -242,9 +255,9 @@ MXGJGT/
 │   ├── api.go              # 核心接口（clean/search/version/update）
 │   ├── admin.go            # 后台管理 API（资源站 / 映射 CRUD + 测试/搜索/同步）
 │   ├── adminauth.go        # 网页后台登录鉴权 + 会话
-│   ├── adminassets.go      # 后台 logo / favicon（go:embed 内嵌）
-│   ├── assets/             # 内嵌静态资源（logo.png / favicon.png）
-│   ├── mxadmin.html        # 网页后台页面（登录 + 管理界面）
+│   ├── adminassets.go      # 后台 logo / favicon / 侧边栏徽标（go:embed 内嵌）
+│   ├── assets/             # 内嵌静态资源（logo.png / favicon.png / logo-mark.png / hls.min.js）
+│   ├── mxadmin.html        # 网页后台页面（侧边栏仪表盘：首页概览 / 资源站 / 映射 / 系统·更新）
 │   └── version.go          # 版本兼容导出
 ├── service/                # 业务逻辑
 │   ├── parser.go           # 官方网站识别 + 影视名/集数提取
@@ -345,7 +358,7 @@ browser:
 推送 `v*` tag 或手动触发 `Release` 工作流，即可在云端构建并发布多平台产物：
 
 ```bash
-git tag v0.0.7 && git push origin v0.0.7
+git tag v0.0.13 && git push origin v0.0.13
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`

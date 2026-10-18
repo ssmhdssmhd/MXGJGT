@@ -13,6 +13,11 @@ import (
 //go:embed assets/logo.png
 var adminLogoPNG []byte
 
+// 后台侧边栏圆形徽标：MXLOGO 仓库 app/app-icon-mark-512.png（纯蝴蝶图标，透明底）
+//
+//go:embed assets/logo-mark.png
+var adminLogoMarkPNG []byte
+
 //go:embed assets/favicon.png
 var adminFaviconPNG []byte
 
@@ -24,6 +29,10 @@ var adminHlsJS []byte
 
 func handleAdminLogo(c *gin.Context) {
 	c.Data(http.StatusOK, "image/png", adminLogoPNG)
+}
+
+func handleAdminLogoMark(c *gin.Context) {
+	c.Data(http.StatusOK, "image/png", adminLogoMarkPNG)
 }
 
 func handleAdminFavicon(c *gin.Context) {
