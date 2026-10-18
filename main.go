@@ -61,7 +61,7 @@ func main() {
 	log.Printf(" 数据目录      :  %s", dataDir)
 	log.Printf(" 缓存目录      :  %s", cacheDir)
 	log.Printf(" 日志目录      :  %s", logsDir)
-	log.Printf(" 伪装模式      :  仅 /api/clean/ /api/search/ 响应")
+	log.Printf(" 伪装模式      :  仅 clean 调用路径 / /api/search/ 响应，其余 404 伪装")
 	log.Printf("==============================================")
 
 	if err := r.Run(addr); err != nil {

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,8 +67,49 @@ func CheckUpdateInfo() UpdateInfo {
 	info.Latest = strings.TrimPrefix(rel.TagName, "v")
 	info.Release = rel.Name
 	info.Published = rel.PublishedAt
-	info.HasUpdate = info.Latest != "" && info.Latest != info.Current
+	// 仅当远程版本「严格高于」当前版本才算有新版本（避免版本号相等/更旧时误报）
+	info.HasUpdate = info.Latest != "" && compareVersion(info.Latest, info.Current) > 0
 	return info
+}
+
+// compareVersion 比较两个点分数字版本，返回 -1(小于) / 0(相等) / 1(大于)
+// 兼容前导 v 与 -beta 之类后缀；非数字段按 0 处理
+func compareVersion(a, b string) int {
+	pa, pb := parseVerParts(a), parseVerParts(b)
+	n := len(pa)
+	if len(pb) > n {
+		n = len(pb)
+	}
+	for i := 0; i < n; i++ {
+		var x, y int
+		if i < len(pa) {
+			x = pa[i]
+		}
+		if i < len(pb) {
+			y = pb[i]
+		}
+		if x != y {
+			if x < y {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
+// parseVerParts 把版本号拆成数字段
+func parseVerParts(v string) []int {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	var out []int
+	for _, s := range strings.Split(v, ".") {
+		n, _ := strconv.Atoi(strings.TrimSpace(s))
+		out = append(out, n)
+	}
+	return out
 }
 
 type ghAsset struct {
@@ -128,8 +170,12 @@ func DoUpdate() error {
 	logUpdate("最新版本: %s", latest.TagName)
 
 	tag := strings.TrimPrefix(latest.TagName, "v")
-	if tag == model.Version {
-		logUpdate("已是最新版本 v%s，无需更新", model.Version)
+	if cmp := compareVersion(tag, model.Version); cmp <= 0 {
+		if cmp == 0 {
+			logUpdate("已是最新版本 v%s，无需更新", model.Version)
+		} else {
+			logUpdate("远程版本 v%s 不高于当前 v%s，跳过更新", tag, model.Version)
+		}
 		return nil
 	}
 

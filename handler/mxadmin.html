@@ -149,6 +149,11 @@
   .modal footer{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
   .modal textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:11px;font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical}
   .modal .field select{width:100%}
+  textarea.ta{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:11px;
+    font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical;outline:none;color:var(--ink)}
+  textarea.ta:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(168,85,247,.16)}
+  .card input.pi,.card input.pr{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-family:ui-monospace,Menlo,monospace;font-size:12px;outline:none}
+  .card select.ps{padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:13px;outline:none}
 
   /* 提示 */
   #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
@@ -211,6 +216,14 @@
         <button data-tab="maps">
           <svg class="i ic" viewBox="0 0 24 24"><path d="M9.5 14.5l5-5"/><path d="M10.6 6.6l1.7-1.7a3.6 3.6 0 0 1 5.1 5.1l-1.7 1.7"/><path d="M13.4 17.4l-1.7 1.7a3.6 3.6 0 0 1-5.1-5.1l1.7-1.7"/></svg>
           <span>平台映射</span>
+        </button>
+        <button data-tab="filter">
+          <svg class="i ic" viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+          <span>M3U8 广告过滤</span>
+        </button>
+        <button data-tab="settings">
+          <svg class="i ic" viewBox="0 0 24 24"><path d="M12 3.5l2 2.2 3-.5.6 3 2.6 1.6-1.6 2.6.5 3-3 .6-2.2 2-2.2-2-3 .5-.6-3L3.5 13l1.6-2.6-.5-3 3-.6z"/><circle cx="12" cy="12" r="2.4"/></svg>
+          <span>系统设置</span>
         </button>
         <button data-tab="sys">
           <svg class="i ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></svg>
@@ -290,6 +303,29 @@
           </h2>
           <p class="empty">勾选该官方平台优先使用的资源站（可多选，按需保存）。</p>
           <div id="maps-box"></div>
+        </section>
+
+        <!-- M3U8 广告过滤 -->
+        <section id="tab-filter" class="card hide">
+          <h2>M3U8 广告过滤（去插播）规则 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-refresh-filter">刷新</button>
+            <button class="btn ghost sm" id="btn-filter-logs">调用日志</button>
+            <button class="btn primary sm" id="btn-add-filter">新增规则</button>
+          </h2>
+          <p class="empty">按主机名前缀 / 正则匹配播放域名，命中后自动剔除插播广告片段；未命中则走自动模式（块分析 + 序列连贯性）。</p>
+          <div id="filter-box"></div>
+        </section>
+
+        <!-- 系统设置 · 路径设置 -->
+        <section id="tab-settings" class="card hide">
+          <h2>系统设置 · 路径设置 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-refresh-paths">刷新</button>
+            <button class="btn primary sm" id="btn-save-paths">保存</button>
+          </h2>
+          <p class="empty">调用路径即接口地址，客户端用它访问：<code class="mono" id="path-demo">http://&lt;域名&gt;/api/clean/?url=</code></p>
+          <p class="empty">可自定义多个路径（支持 http / https），任一命中即生效；未命中这些路径的其它请求统一返回 nginx 风格 404 伪装。</p>
+          <div id="paths-box"></div>
+          <p class="empty" style="margin-top:12px">去插播地址格式：<code class="mono">该路径/?type=m3u8&amp;url=&lt;播放地址&gt;</code>（由 /api/clean 返回 JSON 里的 <code class="mono">qcb</code> 字段给出）。</p>
         </section>
 
         <!-- 系统 -->
@@ -435,12 +471,14 @@
   // ===== 侧边栏菜单 =====
   function switchTab(tab) {
     $$(".menu button").forEach(function (x) { x.classList.toggle("on", x.dataset.tab === tab); });
-    ["home", "sites", "maps", "sys"].forEach(function (t) {
+    ["home", "sites", "maps", "filter", "settings", "sys"].forEach(function (t) {
       var el = $("#tab-" + t);
       if (el) el.classList.toggle("hide", t !== tab);
     });
     if (tab === "sys" && !verData.remote_checked) checkUpdate(false);
     if (tab === "home") renderHome();
+    if (tab === "filter") loadFilterSites();
+    if (tab === "settings") loadCleanPaths();
   }
   $$(".menu button").forEach(function (b) {
     b.addEventListener("click", function () { switchTab(b.dataset.tab); });
@@ -453,6 +491,8 @@
       "· 首页：总览统计与快捷入口\n" +
       "· 资源站管理：新增/编辑/测试/搜索/同步资源站\n" +
       "· 平台映射：设置各官方平台优先使用的资源站\n" +
+      "· M3U8 广告过滤：按站点规则剔除插播广告片段，可探测/测试\n" +
+      "· 系统设置：自定义 /api/clean 调用路径\n" +
       "· 系统·更新：查看当前/远程版本，重载配置、检查并更新\n" +
       "· 顶部「关键词搜索」：在已启用的资源站中全局搜索剧集\n" +
       "· 详情弹窗内点「内嵌播放」可直接观看");
@@ -961,6 +1001,247 @@
         $("#update-msg").textContent = "已触发更新（服务正在重启，约 20-40 秒后刷新页面查看）：" + (e.message || "");
       });
   };
+
+  // ===== M3U8 广告过滤 =====
+  var allFilterSites = [], allPaths = [];
+  function filterSiteById(id) { return allFilterSites.filter(function (x) { return x.id === id; })[0]; }
+  function lines(v) {
+    return (v || "").split(/\r?\n/).map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+  }
+  function secOpts(list, cur) {
+    return list.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>"; }).join("");
+  }
+  function loadFilterSites() {
+    api("/api/admin/filter/sites").then(function (r) {
+      allFilterSites = (r.data || {}).sites || [];
+      renderFilterSites(allFilterSites);
+    }).catch(function (e) { $("#filter-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
+  }
+  function renderFilterSites(list) {
+    if (!list.length) { $("#filter-box").innerHTML = '<p class="empty">暂无过滤规则，点击右上角「新增规则」。</p>'; return; }
+    var h = ["<table><thead><tr><th>名称 / ID</th><th>状态</th><th>检测方式</th><th>索引模式</th><th>码率</th><th>匹配前缀</th><th>操作</th></tr></thead><tbody>"];
+    list.forEach(function (s) {
+      h.push("<tr>" +
+        "<td>" + esc(s.name) + "<div><code class='mono'>" + esc(s.id) + "</code></div></td>" +
+        "<td>" + (s.enabled ? '<span class="pill on">启用</span>' : '<span class="pill off">停用</span>') + "</td>" +
+        "<td>" + esc(s.detect_mode || "-") + "</td>" +
+        "<td>" + esc(s.index_mode || "-") + "</td>" +
+        "<td>" + esc(s.stream_pick || "-") + "</td>" +
+        "<td><code class='mono'>" + esc((s.url_prefixes || []).join(", ") || "-") + "</code></td>" +
+        "<td><div class='ops'>" +
+          "<button class='btn ghost sm' data-fact='probe' data-id='" + esc(s.id) + "'>探测</button>" +
+          "<button class='btn ghost sm' data-fact='test' data-id='" + esc(s.id) + "'>测试</button>" +
+          "<button class='btn ghost sm' data-fact='edit' data-id='" + esc(s.id) + "'>编辑</button>" +
+          "<button class='btn ghost sm' data-fact='toggle' data-id='" + esc(s.id) + "'>" + (s.enabled ? "停用" : "启用") + "</button>" +
+          "<button class='btn danger sm' data-fact='del' data-id='" + esc(s.id) + "'>删除</button>" +
+        "</div></td></tr>");
+    });
+    h.push("</tbody></table>");
+    var box = $("#filter-box"); box.innerHTML = h.join("");
+    box.querySelectorAll("button[data-fact]").forEach(function (btn) {
+      var site = filterSiteById(btn.dataset.id);
+      btn.addEventListener("click", function () {
+        var a = btn.dataset.fact;
+        if (!site) return;
+        if (a === "edit") openFilterSiteModal("edit", site);
+        else if (a === "probe") openFilterProbeModal(site);
+        else if (a === "test") openFilterTestModal(site);
+        else if (a === "toggle") updateFilterSite(site.id, { enabled: !site.enabled });
+        else if (a === "del") { if (confirm("确认删除过滤规则 " + site.name + " ?")) delFilterSite(site.id); }
+      });
+    });
+  }
+  function updateFilterSite(id, body) {
+    api("/api/admin/filter/site/" + encodeURIComponent(id), { method: "PUT", body: body })
+      .then(function (r) { toast(r.code === 200 ? "已更新" : (r.msg || "失败")); loadFilterSites(); });
+  }
+  function delFilterSite(id) {
+    api("/api/admin/filter/site/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function (r) { toast(r.code === 200 ? "已删除" : (r.msg || "失败")); loadFilterSites(); });
+  }
+  function openFilterSiteModal(mode, site) {
+    site = site || {};
+    var isEdit = mode === "edit";
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal wide"><h3>' + (isEdit ? "编辑过滤规则" : "新增过滤规则") + "</h3>" +
+      '<div class="grid">' +
+      '<div class="field"><label>名称 *</label><input id="f-name" value="' + esc(site.name) + '"></div>' +
+      '<div class="field"><label>启用</label><select id="f-enabled"><option value="1"' + (site.enabled === false ? "" : " selected") + '>启用</option><option value="0"' + (site.enabled === false ? " selected" : "") + '>停用</option></select></div>' +
+      '<div class="field"><label>解析方式 parse_type</label><select id="f-parse">' + secOpts(["both", "duration", "hash", "direct"], site.parse_type || "both") + "</select></div>" +
+      '<div class="field"><label>检测方式 detect_mode</label><select id="f-detect">' + secOpts(["auto", "sequence", "blockcut", "slicebatch", "shortblock", "fingerprint", "hash", "regex", "both"], site.detect_mode || "auto") + "</select></div>" +
+      '<div class="field"><label>索引模式 index_mode</label><select id="f-index">' + secOpts(["auto", "single", "fixed"], site.index_mode || "auto") + "</select></div>" +
+      '<div class="field"><label>码率选择 stream_pick</label><select id="f-pick">' + secOpts(["first", "highest", "lowest"], site.stream_pick || "first") + "</select></div>" +
+      '<div class="field"><label>固定子列表 fixed_sub（index_mode=fixed 时）</label><input id="f-fixed" value="' + esc(site.fixed_sub) + '"></div>' +
+      '<div class="field"><label>出网代理 proxy_url（留空=直连）</label><input id="f-proxy" value="' + esc(site.proxy_url) + '"></div>' +
+      '<div class="field full"><label>URL 匹配前缀（一行一个，按主机名匹配）</label><textarea class="ta" rows="2" id="f-prefixes">' + esc((site.url_prefixes || []).join("\n")) + "</textarea></div>" +
+      '<div class="field full"><label>URL 匹配正则（一行一个；以 ^ 开头或含 :// 时匹配整条 URL）</label><textarea class="ta" rows="2" id="f-regexes">' + esc((site.url_regexes || []).join("\n")) + "</textarea></div>" +
+      '<div class="field full"><label>广告时长指纹 fingerprint（一行一组，逗号分隔秒数）</label><textarea class="ta" rows="3" id="f-fp">' + esc(site.fingerprint) + "</textarea></div>" +
+      '<div class="field full"><label>片段级过滤正则 regex_list（一行一个）</label><textarea class="ta" rows="2" id="f-rlist">' + esc((site.regex_list || []).join("\n")) + "</textarea></div>" +
+      '<div class="field full"><label>备注</label><input id="f-remark" value="' + esc(site.remark) + '"></div>' +
+      "</div><footer>" +
+      '<button class="btn ghost" id="f-cancel">取消</button>' +
+      '<button class="btn primary" id="f-save">保存</button>' +
+      "</footer></div></div>";
+    $("#f-cancel").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#f-save").onclick = function () {
+      var body = {
+        name: $("#f-name").value.trim(),
+        enabled: $("#f-enabled").value === "1",
+        parse_type: $("#f-parse").value,
+        detect_mode: $("#f-detect").value,
+        index_mode: $("#f-index").value,
+        stream_pick: $("#f-pick").value,
+        fixed_sub: $("#f-fixed").value.trim(),
+        proxy_url: $("#f-proxy").value.trim(),
+        url_prefixes: lines($("#f-prefixes").value),
+        url_regexes: lines($("#f-regexes").value),
+        fingerprint: $("#f-fp").value.trim(),
+        regex_list: lines($("#f-rlist").value),
+        remark: $("#f-remark").value.trim()
+      };
+      if (!body.name) { toast("请填写名称"); return; }
+      if (isEdit) updateFilterSite(site.id, body);
+      else api("/api/admin/filter/site", { method: "POST", body: body })
+        .then(function (r) { toast(r.code === 200 ? "已添加" : (r.msg || "失败")); loadFilterSites(); });
+      $("#modal-root").innerHTML = "";
+    };
+  }
+  function openFilterProbeModal(site) {
+    site = site || {};
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal"><h3>探测 m3u8：' + esc(site.name || "自动模式") + "</h3>" +
+      '<div class="field"><label>m3u8 地址（或播放页地址）</label><input id="p-url" placeholder="https://.../index.m3u8"></div>' +
+      '<div class="field"><label>深度内容哈希采样</label><select id="p-deep"><option value="0">关闭（快）</option><option value="1">开启（逐段采样，较慢）</option></select></div>' +
+      '<footer><button class="btn ghost" id="p-close">关闭</button><button class="btn primary" id="p-go">开始探测</button></footer>' +
+      '<div id="p-result" style="margin-top:16px"></div></div></div>';
+    $("#p-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#p-go").onclick = function () {
+      var u = $("#p-url").value.trim();
+      if (!u) { toast("请输入地址"); return; }
+      $("#p-result").innerHTML = '<p class="empty">探测中...</p>';
+      api("/api/admin/filter/probe", { method: "POST", body: { url: u, site_id: site.id || "", deep_hash: $("#p-deep").value === "1" } })
+        .then(function (r) {
+          if (r.code !== 200) { $("#p-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+          var d = r.data || {}, segs = d.segments || [];
+          var h = '<div class="kv">' +
+            "<div><b>片段总数</b>" + esc(d.total) + "</div>" +
+            "<div><b>主索引</b>" + (d.is_master ? "是" : "否") + "</div>" +
+            "<div><b>广告区间</b>" + esc((d.ad_ranges || []).join(", ") || "未发现") + "</div>" +
+            "<div><b>建议方式</b>" + esc(d.suggest_mode) + "</div></div>";
+          if (d.error) h += '<p class="err">' + esc(d.error) + "</p>";
+          if (d.fingerprint) h += '<p class="empty">探测到的时长指纹（可粘贴到「fingerprint」）：</p><textarea class="ta" rows="3" readonly>' + esc(d.fingerprint) + "</textarea>";
+          if (segs.length) {
+            h += '<p class="empty">片段（前 ' + segs.length + " 条，标注 [广告] 即被识别）：</p>" +
+              '<textarea class="ta" rows="8" readonly>' + esc(segs.map(function (s) { return (s.ad ? "[广告] " : "       ") + s.index + "  " + s.duration + "s  " + s.uri; }).join("\n")) + "</textarea>";
+          }
+          $("#p-result").innerHTML = h;
+        })
+        .catch(function (e) { $("#p-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    };
+  }
+  function openFilterTestModal(site) {
+    site = site || {};
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal wide"><h3>过滤测试：' + esc(site.name || "自动模式") + "</h3>" +
+      '<div class="field"><label>m3u8 地址（或播放页地址）</label><input id="q-url" placeholder="https://.../index.m3u8"></div>' +
+      '<footer><button class="btn ghost" id="q-close">关闭</button><button class="btn primary" id="q-go">开始测试</button></footer>' +
+      '<div id="q-result" style="margin-top:16px"></div></div></div>';
+    $("#q-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#q-go").onclick = function () {
+      var u = $("#q-url").value.trim();
+      if (!u) { toast("请输入地址"); return; }
+      $("#q-result").innerHTML = '<p class="empty">过滤中...</p>';
+      api("/api/admin/filter/test", { method: "POST", body: { url: u, site_id: site.id || "" } })
+        .then(function (r) {
+          if (r.code !== 200) { $("#q-result").innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+          var d = r.data || {};
+          var h = '<div class="kv">' +
+            "<div><b>片段</b>" + esc(d.total) + "</div>" +
+            "<div><b>保留</b>" + esc(d.kept) + "</div>" +
+            "<div><b>剔除</b>" + esc(d.removed) + "</div>" +
+            "<div><b>广告区间</b>" + esc((d.ad_ranges || []).join(", ") || "无") + "</div>" +
+            "<div><b>方式</b>" + esc(d.mode) + "</div>" +
+            "<div><b>耗时</b>" + esc(d.cost_ms) + " ms</div></div>" +
+            "<p class='empty'>过滤后播放列表（预览）：</p>" +
+            '<textarea class="ta" rows="10" readonly>' + esc(d.playlist) + "</textarea>";
+          if (d.index_url) h += '<p class="empty">实际索引：<code class="mono">' + esc(d.index_url) + "</code></p>";
+          $("#q-result").innerHTML = h;
+        })
+        .catch(function (e) { $("#q-result").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+    };
+  }
+  function openFilterLogsModal() {
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal wide"><h3>过滤调用日志</h3>' +
+      '<div id="l-body"><p class="empty">加载中...</p></div>' +
+      '<footer><button class="btn ghost" id="l-close">关闭</button></footer></div></div>';
+    $("#l-close").onclick = function () { $("#modal-root").innerHTML = ""; };
+    api("/api/admin/filter/logs").then(function (r) {
+      var list = (r.data || {}).records || [];
+      if (!list.length) { $("#l-body").innerHTML = '<p class="empty">暂无调用记录。</p>'; return; }
+      var h = ["<table><thead><tr><th>时间</th><th>站点</th><th>URL</th><th>原/留/剔</th><th>方式</th><th>耗时</th><th>结果</th></tr></thead><tbody>"];
+      list.forEach(function (x) {
+        h.push("<tr><td>" + esc(x.time) + "</td><td>" + esc(x.site || "-") + "</td>" +
+          "<td><code class='mono'>" + esc(x.url) + "</code></td>" +
+          "<td>" + esc(x.origin) + " / " + esc(x.kept) + " / " + esc(x.removed) + "</td>" +
+          "<td>" + esc(x.mode || "-") + "</td><td>" + esc(x.cost_ms) + " ms</td>" +
+          "<td>" + (x.ok ? '<span class="pill on">成功</span>' : '<span class="pill off">' + esc(x.error || "失败") + "</span>") + "</td></tr>");
+      });
+      h.push("</tbody></table>");
+      $("#l-body").innerHTML = h.join("");
+    }).catch(function (e) { $("#l-body").innerHTML = '<p class="err">' + esc(e.message) + "</p>"; });
+  }
+  $("#btn-refresh-filter").onclick = loadFilterSites;
+  $("#btn-filter-logs").onclick = openFilterLogsModal;
+  $("#btn-add-filter").onclick = function () { openFilterSiteModal("add", {}); };
+
+  // ===== 系统设置 · 路径设置 =====
+  function loadCleanPaths() {
+    api("/api/admin/cleanpaths").then(function (r) {
+      allPaths = (r.data || {}).paths || [];
+      renderCleanPaths();
+    }).catch(function (e) { $("#paths-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
+  }
+  function collectPaths() {
+    $$("#paths-box input.pi").forEach(function (inp) { allPaths[parseInt(inp.dataset.i, 10)].path = inp.value; });
+    $$("#paths-box select.ps").forEach(function (sel) { allPaths[parseInt(sel.dataset.i, 10)].enabled = sel.value === "1"; });
+    $$("#paths-box input.pr").forEach(function (inp) { allPaths[parseInt(inp.dataset.i, 10)].remark = inp.value; });
+  }
+  function renderPathDemo() {
+    var p = allPaths.filter(function (x) { return x.enabled; })[0];
+    var path = (p && p.path) || "/api/clean";
+    var el = $("#path-demo");
+    if (el) el.textContent = location.protocol + "//<域名>" + path + "/?url=";
+  }
+  function renderCleanPaths() {
+    var h = ["<table><thead><tr><th style='width:44%'>调用路径</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>"];
+    allPaths.forEach(function (p, i) {
+      h.push("<tr>" +
+        "<td><input class='pi' data-i='" + i + "' value='" + esc(p.path) + "' placeholder='/api/clean'></td>" +
+        "<td><select class='ps' data-i='" + i + "'><option value='1'" + (p.enabled ? " selected" : "") + ">启用</option><option value='0'" + (p.enabled ? "" : " selected") + ">停用</option></select></td>" +
+        "<td><input class='pr' data-i='" + i + "' value='" + esc(p.remark) + "' placeholder='备注'></td>" +
+        "<td><button class='btn danger sm' data-delpath='" + i + "'>删除</button></td></tr>");
+    });
+    h.push("</tbody></table>");
+    h.push('<div style="margin-top:12px"><button class="btn ghost sm" id="btn-addpath">＋ 新增路径</button></div>');
+    var box = $("#paths-box"); box.innerHTML = h.join("");
+    box.querySelectorAll("button[data-delpath]").forEach(function (b) {
+      b.onclick = function () { collectPaths(); allPaths.splice(parseInt(b.dataset.delpath, 10), 1); renderCleanPaths(); renderPathDemo(); };
+    });
+    var add = $("#btn-addpath");
+    if (add) add.onclick = function () { collectPaths(); allPaths.push({ path: "/api/clean2", enabled: true, remark: "" }); renderCleanPaths(); renderPathDemo(); };
+    renderPathDemo();
+  }
+  function saveCleanPaths() {
+    collectPaths();
+    api("/api/admin/cleanpaths", { method: "POST", body: { paths: allPaths } })
+      .then(function (r) {
+        toast(r.code === 200 ? "路径已保存并立即生效" : (r.msg || "失败"));
+        if (r.code === 200) { allPaths = (r.data || {}).paths || []; renderCleanPaths(); }
+      });
+  }
+  $("#btn-refresh-paths").onclick = loadCleanPaths;
+  $("#btn-save-paths").onclick = saveCleanPaths;
 
   checkAuth();
 })();

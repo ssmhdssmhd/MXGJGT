@@ -2,16 +2,17 @@
 package model
 
 // Response 统一 JSON 返回格式
-// 简洁成功返回: {"code":200,"jm":"庆余年","jj":"第12集","url":"https://...","msg":"https://...","time":"...","kfz":"射手沫蝴蝶"}
+// 简洁成功返回: {"code":200,"jm":"庆余年","jj":"第12集","url":"https://...","qcb":"https://.../api/clean/m3u8?url=...","msg":"https://...","time":"...","kfz":"射手沫蝴蝶"}
 type Response struct {
 	Code int    `json:"code"`
-	JM   string `json:"jm,omitempty"`    // 剧名
-	JJ   string `json:"jj,omitempty"`    // 剧集集数
-	URL  string `json:"url,omitempty"`   // 替换后的播放地址
-	Msg  string `json:"msg,omitempty"`   // 同 url（或错误消息）
-	Time string `json:"time,omitempty"`  // 响应时间
-	KFZ  string `json:"kfz,omitempty"`   // 开发商/制作方
-	Data any    `json:"data,omitempty"`  // 后台管理扩展数据
+	JM   string `json:"jm,omitempty"`  // 剧名
+	JJ   string `json:"jj,omitempty"`  // 剧集集数
+	URL  string `json:"url,omitempty"` // 替换后的播放地址
+	QCB  string `json:"qcb,omitempty"` // 去插播（M3U8 广告过滤）后的播放地址
+	Msg  string `json:"msg,omitempty"` // 同 url（或错误消息）
+	Time string `json:"time,omitempty"` // 响应时间
+	KFZ  string `json:"kfz,omitempty"`  // 开发商/制作方
+	Data any    `json:"data,omitempty"` // 后台管理扩展数据
 }
 
 // OK 构造成功响应

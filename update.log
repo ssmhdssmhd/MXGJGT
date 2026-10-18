@@ -1,3 +1,89 @@
+MXGJGT v0.0.14 202610190443
+============================
+
+## 新增「M3U8 广告过滤（去插播）」+「系统设置 · 路径设置」
+
+> 需求：后台侧边栏新增 M3U8 广告过滤（与参考站 mxqcb 功能一致）；`/api/clean/?url=` 的 JSON 返回新增 `qcb`（去插播后的地址）；非公开路径返回 nginx 风格 404 伪装；新增系统设置，支持自定义 `/api/clean/?url=` 调用路径。
+
+### ✨ 新增
+
+**1. 侧边栏新增第 4 项「M3U8 广告过滤」**
+
+- 站点规则 CRUD：名称 / 启用 / 排序 / 解析方式(parse_type) / 检测方式(detect_mode) / 索引模式(index_mode) / 码率选择(stream_pick) / 固定子列表 / 出网代理 / URL 匹配前缀 / URL 匹配正则 / 广告时长指纹 / 片段级正则 / 备注
+- 规则按「主机名前缀 + 整条 URL 正则」匹配播放域名，命中后对返回的 m3u8 自动剔除插播广告；未命中则走自动模式
+- **探测**：解析 m3u8 结构，标注每个片段是否疑似广告、给出广告区间与「时长指纹」建议（可直接粘贴回规则）
+- **测试**：返回 片段总数 / 保留 / 剔除 / 广告区间 / 检测方式 / 耗时 + 过滤后播放列表预览
+- **调用日志**：内存滚动保留最近 200 条去插播调用（时间 / 站点 / URL / 原留剔数 / 方式 / 耗时 / 结果）
+- 探测与测试都支持直接粘贴**播放页地址**，自动解析为直链 m3u8
+
+**2. 去插播引擎（纯 Go，零代理）**
+
+- 零带宽转发：只向源站取一次索引，在服务端剔除广告片段后仍输出指向源站 CDN 的 m3u8，播放器无需再经我们转发 TS
+- 检测原语：`fingerprint` 时长指纹 / `hash` 内容哈希 / `sequence` 序列连贯性 / `blockcut·slicebatch·shortblock` 块分析 / `regex` 片段级正则 / `direct` 直链 / `auto` 自动
+- 主索引按 `first / highest / lowest` 选子列表；VOD 索引 30 分钟内存 TTL 缓存
+- 过滤失败自动 302 回源，保证播放不被中断
+
+**3. JSON 接口新增 `qcb`（去插播后的地址）**
+
+- `/api/clean/?url=` 与 `/api/search/?wd=` 的返回新增 `qcb`：
+  `qcb = <协议>://<域名><主调用路径>/?type=m3u8&url=<替换后的播放地址>`
+- 客户端可直接把 `qcb` 交给播放器，即自动走「去插播」
+
+**4. 系统设置 · 路径设置（自定义调用路径）**
+
+- 侧边栏新增「系统设置」→「路径设置」：可增删多条调用路径（支持 `http://` / `https://` 访问），任一启用路径命中即生效
+- 调用地址形如 `http://<域名>/<自定义路径>/?url=`（或 `?type=m3u8&url=` 走去插播）
+- 全部路径停用时自动回退到默认 `/api/clean`，保证服务不中断
+- `qcb` 生成时优先使用默认 `/api/clean`（启用中），否则取第一条启用路径
+
+**5. 非公开路径 → nginx 风格 404 伪装**
+
+- `/api/clean/` 不再静态注册，改由兜底路由按「路径设置」动态分发
+- 其余未知路径一律返回 nginx 默认 404 页面（`Server: nginx`），伪装成普通 nginx 站点
+
+### 🐛 修复
+
+- **m3u8 解析**：区分「播放列表级」与「片段级」标签 —— 修复 `#EXTINF` 被当成头部、头部标签重复写进首个片段导致过滤后 m3u8 结构错乱的问题
+- **`#EXT-X-DISCONTINUITY` 归属**：修正为标记「其后片段」，避免块边界错位导致误删正片、漏删广告
+- **序列检测误删**：新增「命名一致性」校验，hash 命名的片段（如 `a1b2c3d4.ts`）不再因末尾数字巧合被判为插播；断裂点两两配对，仅剔除插入段，保留恢复后的正片
+- **版本比较**：`has_update` 与自动更新改为**语义化版本比较**，本地版本不低于远程时不再误报「有新版本」/ 误触发降级更新
+
+### 📁 变更文件
+
+```
+new:      model/filter.go        # 广告过滤数据结构（站点规则 / 调用路径 / 探测 / 测试 / 请求体）
+new:      service/filter.go      # 去插播核心引擎（解析 / 识别原语 / 码率选择 / 重写 / 缓存 / 日志）
+new:      handler/filter.go      # 广告过滤后台 API + 路径设置 API
+modified: config/config.go       # cleanpaths.yaml / filter_sites.yaml 持久化 + 路由匹配 + 默认模板
+modified: handler/api.go         # qcb 生成、clean 路径动态分发、m3u8 过滤、nginx 404 伪装
+modified: handler/mxadmin.html   # 侧边栏新增「M3U8 广告过滤」「系统设置」两页
+modified: model/types.go         # Response 新增 qcb 字段
+modified: service/updater.go     # 语义化版本比较，防止误报/降级
+modified: static/404.html        # nginx 风格 404 伪装
+modified: main.go                # 启动日志文案更新
+modified: model/version.go       # 0.0.13 → 0.0.14
+modified: Makefile               # VERSION 0.0.14
+modified: README.md              # 广告过滤 / 路径设置 / qcb / 404 说明
+```
+
+### 📋 实测（本地二进制 v0.0.14 + 真实浏览器）
+
+```
+GET  /api/version                                      → 0.0.14 ✅
+GET  /随机路径                                          → 404 + Server: nginx 伪装 ✅
+GET  /api/clean/?wd=庆余年                              → JSON 含 qcb=<域名>/api/clean/?type=m3u8&url=… ✅
+POST /mx/api/login                                     → 登录成功 ✅
+GET  /api/admin/filter/sites                           → 规则列表 ✅
+POST /api/admin/filter/probe（真实 m3u8 / 播放页）      → 解析 36 段 / 自动解析播放页 ✅
+POST /api/admin/filter/test（真实 m3u8）                → removed=0（无误删）✅
+POST /api/admin/filter/test（合成含广告 m3u8）          → removed=2，区间 10-11（精准命中）✅
+POST /api/admin/filter/test（sequence 模式）            → 仅剔除插入段 900.ts / 901.ts ✅
+POST /api/admin/cleanpaths + GET 自定义路径             → 自定义路径即时生效 ✅
+浏览器后台                                             → 6 项菜单齐全、两新页渲染正常、控制台零报错 ✅
+```
+
+---
+
 MXGJGT v0.0.13 202610190144
 ============================
 

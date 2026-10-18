@@ -4,8 +4,11 @@ package config
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 
 	"mxgjgt/model"
@@ -13,14 +16,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var (
-	appConfig *model.AppConfig
-	sites     []model.ResourceSite
-	mappings  []model.SiteMapping
+// defaultCleanPath 默认调用路径（与线上既有调用方式保持一致）
+const defaultCleanPath = "/api/clean"
 
-	dataDir   string
-	cacheDir  string
-	logsDir   string
+var (
+	appConfig   *model.AppConfig
+	sites       []model.ResourceSite
+	mappings    []model.SiteMapping
+	cleanPaths  []model.CleanPath
+	filterSites []model.FilterSite
+
+	dataDir  string
+	cacheDir string
+	logsDir  string
 
 	mu sync.RWMutex
 )
@@ -57,12 +65,28 @@ func GetMappings() []model.SiteMapping {
 	return mappings
 }
 
+// GetCleanPaths 获取用户自定义的 /api/clean 调用路径
+func GetCleanPaths() []model.CleanPath {
+	mu.RLock()
+	defer mu.RUnlock()
+	return cleanPaths
+}
+
+// GetFilterSites 获取 M3U8 广告过滤站点规则
+func GetFilterSites() []model.FilterSite {
+	mu.RLock()
+	defer mu.RUnlock()
+	return filterSites
+}
+
 // ===== 首次启动写模板（仅当文件不存在时） =====
 
 func EnsureDefaults() {
 	ensureFile(filepath.Join(dataDir, "config.yaml"), defaultConfigYAML())
 	ensureFile(filepath.Join(dataDir, "sites.yaml"), defaultSitesYAML())
 	ensureFile(filepath.Join(dataDir, "mappings.yaml"), defaultMappingsYAML())
+	ensureFile(filepath.Join(dataDir, "cleanpaths.yaml"), defaultCleanPathsYAML())
+	ensureFile(filepath.Join(dataDir, "filter_sites.yaml"), defaultFilterSitesYAML())
 }
 
 func ensureFile(path, content string) {
@@ -117,7 +141,177 @@ func LoadConfig(dir string) error {
 		mappings = defaultMappingsStruct()
 	}
 
+	// cleanpaths.yaml —— 自定义 /api/clean 调用路径
+	cleanPathFile := filepath.Join(dir, "cleanpaths.yaml")
+	if data, err := os.ReadFile(cleanPathFile); err == nil {
+		var cps []model.CleanPath
+		if yaml.Unmarshal(data, &cps) == nil {
+			cleanPaths = cps
+		}
+	}
+	cleanPaths = normalizeCleanPaths(cleanPaths)
+
+	// filter_sites.yaml —— M3U8 广告过滤站点规则
+	filterFile := filepath.Join(dir, "filter_sites.yaml")
+	if data, err := os.ReadFile(filterFile); err == nil {
+		var fs []model.FilterSite
+		if yaml.Unmarshal(data, &fs) == nil {
+			normalizeFilterSites(fs)
+			filterSites = fs
+		}
+	}
+
 	return nil
+}
+
+// normalizeCleanPaths 规范化：去空白/去重；确保至少有一条启用路径可用
+// （用户可自由启停各路径，但全部停用时自动回退到默认 /api/clean）
+func normalizeCleanPaths(cps []model.CleanPath) []model.CleanPath {
+	out := make([]model.CleanPath, 0, len(cps)+1)
+	seen := map[string]bool{}
+	enabled := false
+	for _, cp := range cps {
+		p := normalizeCleanPath(cp.Path)
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		cp.Path = p
+		if cp.Enabled {
+			enabled = true
+		}
+		out = append(out, cp)
+	}
+	if !enabled {
+		if seen[defaultCleanPath] {
+			for i := range out {
+				if out[i].Path == defaultCleanPath {
+					out[i].Enabled = true
+				}
+			}
+		} else {
+			out = append([]model.CleanPath{{Path: defaultCleanPath, Enabled: true, Remark: "默认调用路径"}}, out...)
+		}
+	}
+	return out
+}
+
+// normalizeCleanPath 规范化调用路径：必须 / 开头、不带结尾斜杠
+func normalizeCleanPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	p = strings.TrimRight(p, "/")
+	if p == "" {
+		return ""
+	}
+	return p
+}
+
+// normalizeFilterSites 补齐站点规则的默认值并生成缺失的 ID
+func normalizeFilterSites(fs []model.FilterSite) {
+	for i := range fs {
+		if fs[i].ID == "" {
+			fs[i].ID = randomID()
+		}
+		if fs[i].ParseType == "" {
+			fs[i].ParseType = "both"
+		}
+		if fs[i].DetectMode == "" {
+			fs[i].DetectMode = "auto"
+		}
+		if fs[i].IndexMode == "" {
+			fs[i].IndexMode = "auto"
+		}
+		if fs[i].StreamPick == "" {
+			fs[i].StreamPick = "first"
+		}
+	}
+}
+
+// PrimaryCleanPath 返回对外展示/生成 qcb 时使用的主调用路径
+// 优先默认 /api/clean（若已启用），否则取第一条启用路径
+func PrimaryCleanPath() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, cp := range cleanPaths {
+		if cp.Enabled && cp.Path == defaultCleanPath {
+			return cp.Path
+		}
+	}
+	for _, cp := range cleanPaths {
+		if cp.Enabled {
+			return cp.Path
+		}
+	}
+	return defaultCleanPath
+}
+
+// IsCleanPath 判断某个请求路径是否为用户配置的 clean 调用路径
+func IsCleanPath(p string) bool {
+	norm := normalizeCleanPath(p)
+	if norm == "" {
+		return false
+	}
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, cp := range cleanPaths {
+		if cp.Enabled && cp.Path == norm {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchFilterSite 按 URL 前缀 / 正则匹配广告过滤站点规则
+func MatchFilterSite(u string) *model.FilterSite {
+	host := ""
+	if pu, err := url.Parse(u); err == nil {
+		host = pu.Hostname()
+	}
+	mu.RLock()
+	defer mu.RUnlock()
+	var best *model.FilterSite
+	for i := range filterSites {
+		s := &filterSites[i]
+		if !s.Enabled {
+			continue
+		}
+		hit := false
+		for _, p := range s.URLPrefixes {
+			p = strings.TrimSpace(p)
+			if p != "" && host != "" && strings.HasPrefix(host, p) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			for _, re := range s.URLRegexes {
+				re = strings.TrimSpace(re)
+				if re == "" {
+					continue
+				}
+				// 默认只对主机名匹配；正则以 ^ 开头或含 :// 时对整条 URL 匹配
+				target := host
+				if strings.HasPrefix(re, "^") || strings.Contains(re, "://") {
+					target = u
+				}
+				if ok, err := regexp.MatchString(re, target); err == nil && ok {
+					hit = true
+					break
+				}
+			}
+		}
+		if hit {
+			best = s
+			break
+		}
+	}
+	return best
 }
 
 // Reload 重新从磁盘加载
@@ -145,6 +339,32 @@ func SaveMappings(newMaps []model.SiteMapping) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dataDir, "mappings.yaml"), data, 0644)
+}
+
+// SaveCleanPaths 保存自定义调用路径
+func SaveCleanPaths(cps []model.CleanPath) error {
+	norm := normalizeCleanPaths(cps)
+	mu.Lock()
+	defer mu.Unlock()
+	cleanPaths = norm
+	data, err := yaml.Marshal(norm)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "cleanpaths.yaml"), data, 0644)
+}
+
+// SaveFilterSites 保存 M3U8 广告过滤站点规则
+func SaveFilterSites(fs []model.FilterSite) error {
+	normalizeFilterSites(fs)
+	data, err := yaml.Marshal(fs)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	filterSites = fs
+	mu.Unlock()
+	return os.WriteFile(filepath.Join(dataDir, "filter_sites.yaml"), data, 0644)
 }
 
 // ===== 默认值 =====
@@ -219,7 +439,7 @@ func randomID() string {
 
 func defaultConfigYAML() string {
 	return `# =============================================
-#  MXGJGT v0.0.13 — 主配置
+#  MXGJGT v0.0.14 — 主配置
 #  所有配置修改后调用 POST /api/admin/reload 热加载
 # =============================================
 
@@ -299,5 +519,51 @@ func defaultMappingsYAML() string {
   sites: ["jjm3u8"]
 - official: "哔哩哔哩"
   sites: ["jjm3u8"]
+`
+}
+
+// defaultCleanPathsYAML /api/clean 调用路径（系统设置 · 路径设置）
+func defaultCleanPathsYAML() string {
+	return `# =============================================
+#  调用路径设置（系统设置 · 路径设置）
+#  客户端调用地址形如： http://<域名>{path}/?url=<官方链接>
+#  可配置多个；默认路径 /api/clean 始终保留
+# =============================================
+
+- path: "/api/clean"
+  enabled: true
+  remark: "默认调用路径"
+`
+}
+
+// defaultFilterSitesYAML M3U8 广告过滤站点规则
+func defaultFilterSitesYAML() string {
+	return `# =============================================
+#  M3U8 广告过滤（去插播）站点规则
+#  url_prefixes: 按主机名前缀匹配（任一命中即命中该站点）
+#  url_regexes:  默认只匹配主机名；以 ^ 开头或含 :// 时匹配整条 URL
+#  detect_mode:  auto / sequence / blockcut / slicebatch / shortblock / fingerprint / hash / both
+#  parse_type:   both / duration / hash / direct
+#  index_mode:   auto / single / fixed
+#  stream_pick:  first / highest / lowest
+#  fingerprint:  广告时长指纹，一行一组（逗号分隔的秒数）
+# =============================================
+
+- id: "jjm3u8"
+  name: "吉吉资源 M3U8"
+  enabled: true
+  sort: 0
+  parse_type: both
+  detect_mode: auto
+  index_mode: auto
+  stream_pick: first
+  fixed_sub: ""
+  proxy_url: ""
+  url_prefixes: ["svip.jijiplay", "jijiplay"]
+  url_regexes: []
+  sub_dir: "jjm3u8"
+  fingerprint: ""
+  regex_list: []
+  remark: "示例规则：按主机名前缀匹配吉吉资源播放域名"
 `
 }
