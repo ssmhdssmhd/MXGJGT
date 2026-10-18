@@ -288,12 +288,19 @@
 
         <!-- 资源站 -->
         <section id="tab-sites" class="card hide">
-          <h2>资源站列表 <span class="spacer"></span>
+          <h2>资源站列表（纯净资源站） <span class="spacer"></span>
             <button class="btn ghost sm" id="btn-refresh-sites">刷新</button>
             <button class="btn ghost sm" id="btn-auto">苹果CMS 自动分析</button>
             <button class="btn primary sm" id="btn-add-site">新增资源站</button>
           </h2>
+          <p class="empty">无插播广告的资源站，直接返回原始播放地址。</p>
           <div id="sites-box"></div>
+
+          <h2 style="margin-top:24px">资源站列表（广告资源站） <span class="spacer"></span>
+            <button class="btn primary sm" id="btn-add-site-ads">新增资源站</button>
+          </h2>
+          <p class="empty">含插播广告的资源站，播放时自动走去插播（qcb）后返回干净地址。</p>
+          <div id="sites-box-ads"></div>
         </section>
 
         <!-- 映射 -->
@@ -507,11 +514,22 @@
     api("/api/admin/sites").then(function (r) {
       allSites = (r.data || {}).sites || [];
       renderSites(allSites); renderHome();
-    }).catch(function (e) { $("#sites-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
+    }).catch(function (e) {
+      $("#sites-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>";
+      $("#sites-box-ads").innerHTML = "";
+    });
   }
   function siteById(id) { return allSites.filter(function (x) { return x.id === id; })[0]; }
+  // 资源站分为两类：纯净资源站（无广告）/ 广告资源站（走去插播 qcb）
   function renderSites(sites) {
-    if (!sites.length) { $("#sites-box").innerHTML = '<p class="empty">暂无资源站，点击右上角「新增资源站」。</p>'; return; }
+    renderSiteTable("#sites-box", sites.filter(function (s) { return !s.ads; }),
+      "暂无纯净资源站，点击右上角「新增资源站」添加。");
+    renderSiteTable("#sites-box-ads", sites.filter(function (s) { return !!s.ads; }),
+      "暂无广告资源站，点击右上角「新增资源站」添加。");
+  }
+  function renderSiteTable(boxSel, sites, emptyMsg) {
+    var box = $(boxSel); if (!box) return;
+    if (!sites.length) { box.innerHTML = '<p class="empty">' + esc(emptyMsg) + "</p>"; return; }
     var h = ["<table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>搜索地址</th><th>分类CID</th><th>状态</th><th>操作</th></tr></thead><tbody>"];
     sites.forEach(function (s) {
       h.push("<tr>" +
@@ -527,11 +545,12 @@
           "<button class='btn ghost sm' data-act='sync' data-id='" + esc(s.id) + "'>同步</button>" +
           "<button class='btn ghost sm' data-act='edit' data-id='" + esc(s.id) + "'>编辑</button>" +
           "<button class='btn ghost sm' data-act='toggle' data-id='" + esc(s.id) + "'>" + (s.enabled ? "停用" : "启用") + "</button>" +
+          "<button class='btn ghost sm' data-act='move' data-id='" + esc(s.id) + "'>" + (s.ads ? "移至纯净站" : "移至广告站") + "</button>" +
           "<button class='btn danger sm' data-act='del' data-id='" + esc(s.id) + "'>删除</button>" +
         "</div></td></tr>");
     });
     h.push("</tbody></table>");
-    var box = $("#sites-box"); box.innerHTML = h.join("");
+    box.innerHTML = h.join("");
     box.querySelectorAll("button[data-act]").forEach(function (btn) {
       var site = siteById(btn.dataset.id);
       btn.addEventListener("click", function () {
@@ -541,6 +560,7 @@
         else if (a === "search") openSearchModal(site);
         else if (a === "sync") openSyncModal(site);
         else if (a === "toggle") updateSite(site.id, { enabled: !site.enabled });
+        else if (a === "move") updateSite(site.id, { ads: !site.ads });
         else if (a === "del") { if (confirm("确认删除资源站 " + site.name + " ?")) delSite(site.id); }
       });
     });
@@ -554,15 +574,19 @@
       .then(function (r) { toast(r.code === 200 ? "已删除" : (r.msg || "失败")); loadSites(); });
   }
 
-  // 新增 / 编辑弹窗
-  function openSiteModal(mode, site) {
+  // 新增 / 编辑弹窗（presetAds：新增时预设归类，true=广告资源站）
+  function openSiteModal(mode, site, presetAds) {
     site = site || {};
     var isEdit = mode === "edit";
+    var ads = isEdit ? !!site.ads : !!presetAds;
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal"><h3>' + (isEdit ? "编辑资源站" : "新增资源站") + "</h3>" +
       '<div class="grid">' +
       '<div class="field"><label>名称 *</label><input id="m-name" value="' + esc(site.name) + '"></div>' +
       (isEdit ? "" : '<div class="field"><label>类型</label><select id="m-type"><option value="applecms">applecms</option><option value="html">html</option></select></div>') +
+      '<div class="field"><label>站点分类</label><select id="m-ads">' +
+        '<option value="0"' + (ads ? "" : " selected") + '>纯净资源站（无广告）</option>' +
+        '<option value="1"' + (ads ? " selected" : "") + '>广告资源站（走去插播 qcb）</option></select></div>' +
       '<div class="field full"><label>搜索地址 *（用 {keyword} 占位）</label><input id="m-url" value="' + esc(site.url) + '"></div>' +
       '<div class="field full"><label>详情地址（用 {id} 占位）</label><input id="m-detail" value="' + esc(site.detail_url) + '"></div>' +
       '<div class="field"><label>分类 CID（逗号分隔）</label><input id="m-cid" value="' + esc(site.cid) + '"></div>' +
@@ -580,11 +604,12 @@
         url: $("#m-url").value.trim(),
         detail_url: $("#m-detail").value.trim(),
         cid: $("#m-cid").value.trim(),
+        ads: $("#m-ads").value === "1",
         enabled: $("#m-enabled").value === "1"
       };
       if (!body.name || !body.url) { toast("名称与搜索地址必填"); return; }
       if (isEdit) {
-        updateSite(site.id, { name: body.name, url: body.url, detail_url: body.detail_url, cid: body.cid, enabled: body.enabled });
+        updateSite(site.id, { name: body.name, url: body.url, detail_url: body.detail_url, cid: body.cid, ads: body.ads, enabled: body.enabled });
       } else {
         body.type = $("#m-type").value;
         api("/api/admin/site", { method: "POST", body: body })
@@ -593,8 +618,9 @@
       $("#modal-root").innerHTML = "";
     };
   }
-  $("#btn-add-site").onclick = function () { openSiteModal("add", {}); };
-  $("#q-add").onclick = function () { openSiteModal("add", {}); };
+  $("#btn-add-site").onclick = function () { openSiteModal("add", {}, false); };
+  $("#btn-add-site-ads").onclick = function () { openSiteModal("add", {}, true); };
+  $("#q-add").onclick = function () { openSiteModal("add", {}, false); };
   $("#btn-refresh-sites").onclick = loadSites;
 
   // ===== 资源站：测试 / 搜索 / 同步 =====
@@ -1008,8 +1034,11 @@
   function lines(v) {
     return (v || "").split(/\r?\n/).map(function (x) { return x.trim(); }).filter(function (x) { return x; });
   }
-  function secOpts(list, cur) {
-    return list.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" + esc(v) + "</option>"; }).join("");
+  // 生成 <option>：pairs 为 [值, 中文说明] 数组，展示为「值(中文)」，方便新手辨识
+  function secOpts(pairs, cur) {
+    return pairs.map(function (p) {
+      return '<option value="' + esc(p[0]) + '"' + (p[0] === cur ? " selected" : "") + ">" + esc(p[0] + "(" + p[1] + ")") + "</option>";
+    }).join("");
   }
   function loadFilterSites() {
     api("/api/admin/filter/sites").then(function (r) {
@@ -1064,13 +1093,20 @@
     var isEdit = mode === "edit";
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal wide"><h3>' + (isEdit ? "编辑过滤规则" : "新增过滤规则") + "</h3>" +
+      '<div class="field full"><label>资源站播放链接（粘贴后点「自动分析填入」，自动识别广告并填表）</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<input id="f-src" style="flex:1" placeholder="https://xxx.com/play/xxx.html 或 https://.../index.m3u8">' +
+          '<button class="btn primary sm" id="f-analyze" type="button">自动分析填入</button>' +
+        "</div>" +
+        '<p class="empty" id="f-analyze-hint" style="margin:8px 0 0">粘贴该资源站的任意播放链接，自动解析 m3u8、探测插播广告并填入下方规则。</p>' +
+      "</div>" +
       '<div class="grid">' +
       '<div class="field"><label>名称 *</label><input id="f-name" value="' + esc(site.name) + '"></div>' +
       '<div class="field"><label>启用</label><select id="f-enabled"><option value="1"' + (site.enabled === false ? "" : " selected") + '>启用</option><option value="0"' + (site.enabled === false ? " selected" : "") + '>停用</option></select></div>' +
-      '<div class="field"><label>解析方式 parse_type</label><select id="f-parse">' + secOpts(["both", "duration", "hash", "direct"], site.parse_type || "both") + "</select></div>" +
-      '<div class="field"><label>检测方式 detect_mode</label><select id="f-detect">' + secOpts(["auto", "sequence", "blockcut", "slicebatch", "shortblock", "fingerprint", "hash", "regex", "both"], site.detect_mode || "auto") + "</select></div>" +
-      '<div class="field"><label>索引模式 index_mode</label><select id="f-index">' + secOpts(["auto", "single", "fixed"], site.index_mode || "auto") + "</select></div>" +
-      '<div class="field"><label>码率选择 stream_pick</label><select id="f-pick">' + secOpts(["first", "highest", "lowest"], site.stream_pick || "first") + "</select></div>" +
+      '<div class="field"><label>解析方式 parse_type</label><select id="f-parse">' + secOpts([["both", "两者都解析"], ["duration", "按时长"], ["hash", "按内容哈希"], ["direct", "直链不过滤"]], site.parse_type || "both") + "</select></div>" +
+      '<div class="field"><label>检测方式 detect_mode</label><select id="f-detect">' + secOpts([["auto", "自动（推荐）"], ["sequence", "序列连贯"], ["blockcut", "块截断"], ["slicebatch", "批次切片"], ["shortblock", "孤立短块"], ["fingerprint", "时长指纹"], ["hash", "内容哈希"], ["regex", "片段正则"], ["both", "指纹+哈希+正则"]], site.detect_mode || "auto") + "</select></div>" +
+      '<div class="field"><label>索引模式 index_mode</label><select id="f-index">' + secOpts([["auto", "自动（推荐）"], ["single", "单条子索引"], ["fixed", "固定子列表"]], site.index_mode || "auto") + "</select></div>" +
+      '<div class="field"><label>码率选择 stream_pick</label><select id="f-pick">' + secOpts([["first", "第一条"], ["highest", "最高码率"], ["lowest", "最低码率"]], site.stream_pick || "first") + "</select></div>" +
       '<div class="field"><label>固定子列表 fixed_sub（index_mode=fixed 时）</label><input id="f-fixed" value="' + esc(site.fixed_sub) + '"></div>' +
       '<div class="field"><label>出网代理 proxy_url（留空=直连）</label><input id="f-proxy" value="' + esc(site.proxy_url) + '"></div>' +
       '<div class="field full"><label>URL 匹配前缀（一行一个，按主机名匹配）</label><textarea class="ta" rows="2" id="f-prefixes">' + esc((site.url_prefixes || []).join("\n")) + "</textarea></div>" +
@@ -1083,6 +1119,34 @@
       '<button class="btn primary" id="f-save">保存</button>' +
       "</footer></div></div>";
     $("#f-cancel").onclick = function () { $("#modal-root").innerHTML = ""; };
+    // 自动分析：粘贴资源站播放链接 → 解析 m3u8 + 探测广告 → 一键填入表单
+    function analyzeFilterSource() {
+      var u = $("#f-src").value.trim();
+      if (!u) { toast("请填写资源站播放链接"); return; }
+      var hint = $("#f-analyze-hint");
+      hint.textContent = "分析中…（解析 m3u8 + 探测广告，请稍候）";
+      api("/api/admin/filter/analyze", { method: "POST", body: { url: u } })
+        .then(function (r) {
+          if (r.code !== 200) { hint.textContent = r.msg || "分析失败"; return; }
+          var d = r.data || {};
+          if (d.name && !$("#f-name").value.trim()) $("#f-name").value = d.name;
+          if (d.parse_type) $("#f-parse").value = d.parse_type;
+          if (d.detect_mode) $("#f-detect").value = d.detect_mode;
+          if (d.index_mode) $("#f-index").value = d.index_mode;
+          if (d.stream_pick) $("#f-pick").value = d.stream_pick;
+          $("#f-prefixes").value = (d.url_prefixes || []).join("\n");
+          if (d.fingerprint) $("#f-fp").value = d.fingerprint;
+          if (d.remark) $("#f-remark").value = d.remark;
+          var ads = (d.ad_ranges || []).join(", ") || "未发现";
+          hint.textContent = "分析完成：共 " + (d.total || 0) + " 段，广告区间 " + ads +
+            "，已自动填入。" + (d.has_ad ? "" : "（未探测到明显广告，可手动复核）");
+        })
+        .catch(function (e) { hint.textContent = "分析失败：" + (e.message || "网络错误"); });
+    }
+    $("#f-analyze").onclick = analyzeFilterSource;
+    $("#f-src").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); analyzeFilterSource(); }
+    });
     $("#f-save").onclick = function () {
       var body = {
         name: $("#f-name").value.trim(),

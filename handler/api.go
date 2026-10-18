@@ -49,6 +49,7 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.DELETE("/filter/site/:id", handleAdminFilterSiteDel)
 			admin.POST("/filter/probe",      handleAdminFilterProbe)
 			admin.POST("/filter/test",       handleAdminFilterTest)
+			admin.POST("/filter/analyze",    handleAdminFilterAnalyze)
 			admin.GET("/filter/logs",        handleAdminFilterLogs)
 
 			// 系统设置 · 路径设置（自定义 clean 调用路径）

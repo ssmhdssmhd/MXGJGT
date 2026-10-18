@@ -75,6 +75,31 @@ type ProbeResult struct {
 	Error       string         `json:"error,omitempty"`
 }
 
+// ======== 播放链接自动分析（新增过滤规则自动填入） ========
+
+// FilterAnalyzeResult 播放链接自动分析结果
+// 输入资源站播放链接（或 m3u8 直链），自动解析 + 探测广告，
+// 返回可直接填入「新增过滤规则」表单的字段，避免手动逐项填写。
+type FilterAnalyzeResult struct {
+	OK          bool           `json:"ok"`
+	SourceURL   string         `json:"source_url"`   // 用户输入的播放链接 / m3u8
+	IndexURL    string         `json:"index_url"`    // 实际解析到的媒体索引（m3u8）
+	IsMaster    bool           `json:"is_master"`    // 是否主索引
+	Total       int            `json:"total"`        // 片段总数
+	AdRanges    []string       `json:"ad_ranges"`    // 探测到的广告区间
+	HasAd       bool           `json:"has_ad"`       // 是否探测到广告
+	Name        string         `json:"name"`         // 建议规则名
+	ParseType   string         `json:"parse_type"`   // 解析方式
+	DetectMode  string         `json:"detect_mode"`  // 检测方式
+	IndexMode   string         `json:"index_mode"`   // 索引模式
+	StreamPick  string         `json:"stream_pick"`  // 码率选择
+	URLPrefixes []string       `json:"url_prefixes"` // URL 匹配前缀
+	Fingerprint string         `json:"fingerprint"`  // 广告时长指纹
+	Remark      string         `json:"remark"`       // 备注
+	Segments    []ProbeSegment `json:"segments"`     // 片段探测明细（前若干条）
+	Error       string         `json:"error,omitempty"`
+}
+
 // ======== M3U8 测试 ========
 
 // FilterTestResult M3U8 过滤测试结果

@@ -167,6 +167,35 @@ func handleAdminFilterTest(c *gin.Context) {
 	})
 }
 
+// handleAdminFilterAnalyze 分析资源站播放链接：自动解析 m3u8 + 探测广告，
+// 返回可一键填入「新增过滤规则」表单的字段（避免逐项手填）。
+func handleAdminFilterAnalyze(c *gin.Context) {
+	var req struct {
+		URL      string `json:"url"`
+		DeepHash bool   `json:"deep_hash"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(200, model.Fail(400, "参数错误"))
+		return
+	}
+	u := strings.TrimSpace(req.URL)
+	if u == "" {
+		c.JSON(200, model.Fail(400, "请填写资源站播放链接"))
+		return
+	}
+	res, err := service.AnalyzeFilterSource(u, req.DeepHash)
+	if err != nil {
+		c.JSON(200, model.Fail(400, "分析失败: "+err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  "分析完成，已自动生成规则字段",
+		Data: res,
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
 func handleAdminFilterLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, model.Response{
 		Code: 200,

@@ -1,6 +1,7 @@
 # ========================
 # 资源站列表 — 自动探测 / 苹果CMS 采集
 # 每个资源站有唯一 ID，后台管理 CRUD 用
+# ads: true=广告资源站（走去插播 qcb），false=纯净资源站（无广告）
 # ========================
 
 - id: "jjm3u8"
@@ -10,4 +11,5 @@
   detail_url: "http://caiji.jjzyapi.com/api.php/provide/vod/?ac=detail&ids={id}"
   encode: "utf8"
   cid: ""
+  ads: true
   enabled: true

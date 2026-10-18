@@ -88,6 +88,10 @@ func handleAdminAddSite(c *gin.Context) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
+	ads := false
+	if req.Ads != nil {
+		ads = *req.Ads
+	}
 
 	sites := config.GetSites()
 	id := strings.ToLower(strings.ReplaceAll(req.Name, " ", ""))
@@ -99,6 +103,7 @@ func handleAdminAddSite(c *gin.Context) {
 		DetailURL: req.DetailURL,
 		Encode:    req.Encode,
 		CID:       req.CID,
+		Ads:       ads,
 		Enabled:   enabled,
 	}
 	sites = append(sites, newSite)
@@ -121,6 +126,7 @@ func handleAdminUpdateSite(c *gin.Context) {
 			if req.URL != nil { s.URL = *req.URL }
 			if req.DetailURL != nil { s.DetailURL = *req.DetailURL }
 			if req.CID != nil { s.CID = *req.CID }
+			if req.Ads != nil { s.Ads = *req.Ads }
 			if req.Enabled != nil { s.Enabled = *req.Enabled }
 			sites[i] = s
 			if err := config.SaveSites(sites); err != nil {

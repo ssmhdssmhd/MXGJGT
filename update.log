@@ -1,3 +1,72 @@
+MXGJGT v0.0.15 202610190742
+============================
+
+## 资源站分类（纯净 / 广告）+「过滤规则播放链接自动分析填入」+ 下拉项中文注解
+
+> 需求：新增过滤规则时可直接粘贴资源站的**播放链接**，自动分析广告并一键填表（对齐参考站 mxqcb 的添加方式，免去逐项手填）；资源站管理拆分为「资源站列表（纯净资源站）」与「资源站列表（广告资源站）」两个列表，分别管理无广告站点与含广告站点（含广告者播放时走去插播 qcb 后返回干净地址）；过滤规则弹窗内所有英文下拉项补「英文(中文)」注解，方便新手。
+
+### ✨ 新增
+
+**1. 资源站拆分为「纯净 / 广告」两类**
+
+- 资源站模型新增 `ads` 字段：`false`=纯净资源站（无插播广告，直接返回原始播放地址）/ `true`=广告资源站（播放时自动走去插播 qcb，返回干净地址）
+- 资源站管理页拆为两个独立表格：**资源站列表（纯净资源站）** 与 **资源站列表（广告资源站）**
+  - 上方「新增资源站」默认归入纯净站；广告资源站列表自带「新增资源站」按钮，新增时自动预设为广告站
+  - 每行新增一键「**移至纯净站 / 移至广告站**」按钮，无需进编辑弹窗即可跨类移动
+  - 新增 / 编辑弹窗内亦提供「站点分类」下拉（纯净资源站（无广告） / 广告资源站（走去插播 qcb））
+- 接口支持：`POST /api/admin/site`、`PUT /api/admin/site/:id` 现已读写 `ads` 字段（缺省 `false`=纯净站，兼容旧数据）
+- 默认模板 `data/sites.yaml` 与 `defaultSitesYAML()` 补充 `ads` 字段与说明注释
+
+**2. 新增过滤规则：播放链接自动分析填入**
+
+- 过滤规则弹窗顶部新增「**资源站播放链接**」输入框 +「**自动分析填入**」按钮（支持回车触发）
+- 粘贴该资源站的任意播放链接（**播放页** 或 **m3u8 直链**）后点击，自动：
+  1. 解析播放页 → 直链 m3u8（本身是 m3u8 则直接使用）
+  2. 探测 m3u8 结构并识别插播广告区间
+  3. 生成建议规则名（取实际 m3u8 主机名）、URL 匹配前缀、解析方式 / 检测方式 / 索引模式 / 码率、广告时长指纹、备注，并**一键填入表单**
+- 探测到广告时长指纹时「检测方式」优先建议 `fingerprint`；未探测到则建议 `auto` 并提示手动复核
+- 名称字段仅在为空时填充，其余规则字段以分析结果为准一键写入，保证「粘贴 → 点击」即可直接保存
+- 新增接口：`POST /api/admin/filter/analyze`（body: `{ "url": "<播放链接或 m3u8>" }`），复用现有 `ResolvePlayStream` + `ProbeM3U8` 能力，返回可直接填表的完整字段与片段探测明细
+
+**3. 过滤规则下拉项补「英文(中文)」注解**
+
+- 解析方式 `parse_type`：`both(两者都解析)` / `duration(按时长)` / `hash(按内容哈希)` / `direct(直链不过滤)`
+- 检测方式 `detect_mode`：`auto(自动（推荐）)` / `sequence(序列连贯)` / `blockcut(块截断)` / `slicebatch(批次切片)` / `shortblock(孤立短块)` / `fingerprint(时长指纹)` / `hash(内容哈希)` / `regex(片段正则)` / `both(指纹+哈希+正则)`
+- 索引模式 `index_mode`：`auto(自动（推荐）)` / `single(单条子索引)` / `fixed(固定子列表)`
+- 码率选择 `stream_pick`：`first(第一条)` / `highest(最高码率)` / `lowest(最低码率)`
+
+### 📁 变更文件
+
+```
+modified: model/types.go       # ResourceSite 新增 Ads；AddSiteRequest/UpdateSiteRequest 支持 ads
+new:      model/filter.go      # FilterAnalyzeResult（播放链接分析结果）— 随本次实现新增
+modified: service/filter.go     # AnalyzeFilterSource：播放页→m3u8→探测广告→生成表单建议
+modified: handler/filter.go     # handleAdminFilterAnalyze（POST /api/admin/filter/analyze）
+modified: handler/admin.go      # 资源站增删改读写 ads 字段（缺省=false 纯净站）
+modified: handler/api.go        # 注册 /api/admin/filter/analyze 路由
+modified: handler/mxadmin.html  # 资源站拆分双列表 + 互移按钮 + 自动分析填入 + 下拉中文注解
+modified: config/config.go      # defaultSitesYAML 补充 ads 字段说明
+modified: data/sites.yaml       # 默认示例补充 ads: true
+modified: model/version.go      # 0.0.14 → 0.0.15
+modified: Makefile              # VERSION 0.0.15
+modified: README.md             # 资源站分类 / 自动分析填入 / 下拉注解 / analyze 接口说明
+```
+
+### 📋 实测
+
+```
+go build ./...                                          → 通过，无报错 ✅
+GET  /api/version                                        → 0.0.15 ✅
+GET  /api/admin/sites                                    → 资源站含 ads 字段 ✅
+POST /api/admin/site（ads=true）                          → 归入广告资源站 ✅
+PUT  /api/admin/site/:id（ads=false）                     → 移至纯净资源站 ✅
+POST /api/admin/filter/analyze（真实播放链接）             → 返回 m3u8 主机前缀 / 段数 / 广告区间 / 指纹建议 ✅
+后台资源站管理                                            → 纯净 / 广告 两列表渲染正常，互移按钮生效 ✅
+后台新增过滤规则                                          → 粘贴链接一键填表；下拉项显示为 auto(自动（推荐）) 等 ✅
+```
+
+---
+
 MXGJGT v0.0.14 202610190443
 ============================
 

@@ -901,6 +901,70 @@ func ProbeM3U8(rawURL string, site *model.FilterSite, deepHash bool) (*model.Pro
 	return out, nil
 }
 
+// AnalyzeFilterSource 分析资源站播放链接，自动探测广告并给出可直接填入
+// 「新增过滤规则」表单的建议字段，避免逐项手动填写。
+//
+// 输入既可以是 m3u8 直链，也可以是资源站的播放页（自动解析出直链）。
+func AnalyzeFilterSource(rawURL string, deepHash bool) (*model.FilterAnalyzeResult, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("请填写资源站播放链接")
+	}
+
+	// 播放页 → 直链 m3u8（本身就是 m3u8 则直接用）
+	resolved := rawURL
+	if !strings.Contains(strings.ToLower(resolved), ".m3u8") {
+		s, err := ResolvePlayStream(rawURL)
+		if err != nil || s == "" {
+			if err == nil {
+				err = fmt.Errorf("未解析出 m3u8")
+			}
+			return nil, fmt.Errorf("未能从播放链接解析出 m3u8：%v", err)
+		}
+		resolved = s
+	}
+
+	pr, err := ProbeM3U8(resolved, nil, deepHash)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &model.FilterAnalyzeResult{
+		OK:          true,
+		SourceURL:   rawURL,
+		IndexURL:    pr.IndexURL,
+		IsMaster:    pr.IsMaster,
+		Total:       pr.Total,
+		AdRanges:    pr.AdRanges,
+		HasAd:       len(pr.AdRanges) > 0,
+		ParseType:   "both",
+		IndexMode:   "auto",
+		StreamPick:  "first",
+		URLPrefixes: []string{},
+		Segments:    pr.Segments,
+		Remark:      "由播放链接自动分析生成",
+	}
+
+	// URL 匹配前缀 / 建议规则名：取实际 m3u8 的主机名
+	host := ""
+	if pu, err := url.Parse(resolved); err == nil {
+		host = pu.Hostname()
+	}
+	if host != "" {
+		out.URLPrefixes = append(out.URLPrefixes, host)
+		out.Name = strings.TrimPrefix(host, "www.")
+		out.Remark = "由播放链接自动分析生成（" + host + "）"
+	}
+
+	// 检测方式：探测到指纹优先「时长指纹」，否则自动
+	if out.Fingerprint = pr.Fingerprint; out.Fingerprint != "" {
+		out.DetectMode = "fingerprint"
+	} else {
+		out.DetectMode = "auto"
+	}
+	return out, nil
+}
+
 // probeSegments 转为探测输出结构（最多 n 条）
 func probeSegments(segs []*M3U8Segment, n int) []model.ProbeSegment {
 	out := make([]model.ProbeSegment, 0, n)

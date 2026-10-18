@@ -43,16 +43,17 @@ type VideoSite struct {
 
 // ResourceSite 资源站配置
 type ResourceSite struct {
-	ID        string `yaml:"id" json:"id"`                   // 唯一 ID（后台管理用）
+	ID        string `yaml:"id" json:"id"`                 // 唯一 ID（后台管理用）
 	Name      string `yaml:"name" json:"name"`
-	Type      string `yaml:"type" json:"type"`                 // applecms / html
-	URL       string `yaml:"url" json:"url"`                  // 搜索 URL，{keyword} 占位符
-	DetailURL string `yaml:"detail_url" json:"detail_url"`     // 详情 URL，{id} 占位符
+	Type      string `yaml:"type" json:"type"`             // applecms / html
+	URL       string `yaml:"url" json:"url"`               // 搜索 URL，{keyword} 占位符
+	DetailURL string `yaml:"detail_url" json:"detail_url"` // 详情 URL，{id} 占位符
 	Encode    string `yaml:"encode" json:"encode"`
 	Selector  string `yaml:"selector" json:"selector"`
 	TitleAttr string `yaml:"title_attr" json:"title_attr"`
 	LinkAttr  string `yaml:"link_attr" json:"link_attr"`
-	CID       string `yaml:"cid" json:"cid"`                  // 苹果CMS分类ID映射（逗号分隔）
+	CID       string `yaml:"cid" json:"cid"`     // 苹果CMS分类ID映射（逗号分隔）
+	Ads       bool   `yaml:"ads" json:"ads"`     // 是否含插播广告：true=广告资源站(走去插播 qcb)，false=纯净资源站
 	Enabled   bool   `yaml:"enabled" json:"enabled"`
 }
 
@@ -171,6 +172,7 @@ type AddSiteRequest struct {
 	DetailURL string `json:"detail_url"`
 	Encode    string `json:"encode"`
 	CID       string `json:"cid"`
+	Ads       *bool  `json:"ads"` // 是否含广告（广告资源站）；缺省=false（纯净资源站）
 	Enabled   *bool  `json:"enabled"`
 }
 
@@ -180,6 +182,7 @@ type UpdateSiteRequest struct {
 	URL       *string `json:"url"`
 	DetailURL *string `json:"detail_url"`
 	CID       *string `json:"cid"`
+	Ads       *bool   `json:"ads"`
 	Enabled   *bool   `json:"enabled"`
 }
 

@@ -486,6 +486,8 @@ func defaultSitesYAML() string {
 #  url 中用 {keyword} 作为搜索词占位
 #  detail_url 用 {id} 作为资源 ID 占位
 #  cid: 苹果CMS 分类 ID 逗号分隔（可留空）
+#  ads: true=广告资源站（走去插播 qcb 后返回干净地址）
+#       false=纯净资源站（无广告，直接返回原始地址）
 # =============================================
 
 - id: "jjm3u8"
@@ -495,6 +497,7 @@ func defaultSitesYAML() string {
   detail_url: "http://caiji.jjzyapi.com/api.php/provide/vod/?ac=detail&ids={id}"
   encode: "utf8"
   cid: ""
+  ads: true
   enabled: true
 `
 }
