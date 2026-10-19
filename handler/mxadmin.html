@@ -284,6 +284,10 @@
           <svg class="i ic" viewBox="0 0 24 24"><path d="M9.5 14.5l5-5"/><path d="M10.6 6.6l1.7-1.7a3.6 3.6 0 0 1 5.1 5.1l-1.7 1.7"/><path d="M13.4 17.4l-1.7 1.7a3.6 3.6 0 0 1-5.1-5.1l1.7-1.7"/></svg>
           <span>平台映射</span>
         </button>
+        <button data-tab="ad-analyze">
+          <svg class="i ic" viewBox="0 0 24 24"><path d="M3 5h18v4H3z"/><path d="M5 9v10h14V9"/><path d="M9 13l2 2 4-4"/></svg>
+          <span>M3U8 广告分析</span>
+        </button>
         <button data-tab="filter">
           <svg class="i ic" viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
           <span>广告过滤</span>
@@ -377,6 +381,66 @@
           </h2>
           <p class="empty">勾选该官方平台优先使用的资源站（可多选，按需保存）。</p>
           <div id="maps-box"></div>
+        </section>
+
+        <!-- M3U8 广告分析 -->
+        <section id="tab-ad-analyze" class="card hide">
+          <h2>M3U8 广告分析 <span class="spacer"></span></h2>
+          <p class="empty">粘贴<b>播放页链接</b>或 <b>m3u8 直链</b>，自动解析、探测插播广告（含字幕 / 贴片），并生成去广告播放列表；可在此<b>直连播放</b>（原始）与<b>无广告内嵌播放</b>（过滤后）对比，一键生成过滤规则。</p>
+
+          <div class="field full">
+            <label>播放链接 / m3u8 地址</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="aa-url" style="flex:1;min-width:260px" placeholder="https://xxx.com/play/xxx.html 或 https://.../index.m3u8">
+              <label style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+                <input type="checkbox" id="aa-deep"> 深度内容哈希（较慢，逐段采样）
+              </label>
+              <button class="btn primary" id="aa-go">开始分析</button>
+            </div>
+          </div>
+
+          <div id="aa-status" class="empty" style="margin:8px 0 12px"></div>
+
+          <div id="aa-summary" class="hide" style="margin:12px 0">
+            <div class="kv" id="aa-kv"></div>
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn ghost sm" id="aa-gen-rule">一键生成过滤规则（跳转到广告过滤·新增并填表）</button>
+              <button class="btn ghost sm" id="aa-copy-direct">复制直连播放地址</button>
+              <button class="btn ghost sm" id="aa-copy-adfree">复制无广告播放地址</button>
+            </div>
+          </div>
+
+          <div id="aa-players" class="hide" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0">
+            <div>
+              <h4 style="margin:0 0 6px">直连播放（原始 m3u8）</h4>
+              <video id="aa-video-direct" controls playsinline style="width:100%;background:#000;border-radius:6px"></video>
+            </div>
+            <div>
+              <h4 style="margin:0 0 6px">无广告内嵌播放（过滤后）</h4>
+              <video id="aa-video-adfree" controls playsinline style="width:100%;background:#000;border-radius:6px"></video>
+            </div>
+          </div>
+
+          <div id="aa-segbox" class="hide" style="margin-top:12px">
+            <h4>片段明细 <span class="spacer"></span><span id="aa-segcount" class="empty"></span></h4>
+            <div style="max-height:320px;overflow:auto;border:1px solid var(--border,#e5e7eb);border-radius:6px">
+              <table class="tbl" id="aa-segtbl">
+                <thead><tr><th>#</th><th>时长</th><th>广告</th><th>片段地址</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="aa-playlist" class="hide" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <h4 style="margin:0 0 6px">原始 m3u8（前 30 行）</h4>
+              <textarea class="ta" rows="10" readonly id="aa-orig"></textarea>
+            </div>
+            <div>
+              <h4 style="margin:0 0 6px">去广告后 m3u8</h4>
+              <textarea class="ta" rows="10" readonly id="aa-filtered"></textarea>
+            </div>
+          </div>
         </section>
 
         <!-- 广告过滤（一级菜单：去插播 + 画面遮罩） -->
@@ -593,7 +657,7 @@
   // ===== 侧边栏菜单 =====
   function switchTab(tab) {
     $$(".menu button").forEach(function (x) { x.classList.toggle("on", x.dataset.tab === tab); });
-    ["home", "sites", "maps", "filter", "settings", "sys"].forEach(function (t) {
+    ["home", "sites", "maps", "ad-analyze", "filter", "settings", "sys"].forEach(function (t) {
       var el = $("#tab-" + t);
       if (el) el.classList.toggle("hide", t !== tab);
     });
@@ -1472,6 +1536,103 @@
   $$("#ad-subtabs .subtab").forEach(function (b) {
     b.addEventListener("click", function () { switchAdSub(b.dataset.sub); });
   });
+
+  // ===== M3U8 广告分析 =====
+  var aaHls = { direct: null, adfree: null };
+  function aaDestroy() {
+    ["direct", "adfree"].forEach(function (k) {
+      if (aaHls[k]) { try { aaHls[k].destroy(); } catch (e) {} aaHls[k] = null; }
+      var v = $("#aa-video-" + k);
+      if (v) { try { v.pause(); } catch (e) {} v.removeAttribute("src"); v.load(); }
+    });
+  }
+  function aaPlay(url, which) {
+    var v = $("#aa-video-" + which);
+    if (!v || !url) return;
+    if (aaHls[which]) { try { aaHls[which].destroy(); } catch (e) {} aaHls[which] = null; }
+    if (v.canPlayType("application/vnd.apple.mpegurl") && !window.Hls) {
+      v.src = url; return;
+    }
+    loadHls(function (err) {
+      if (err || !window.Hls || !window.Hls.isSupported()) { v.src = url; return; }
+      aaHls[which] = new window.Hls({ enableWorker: true });
+      aaHls[which].loadSource(url);
+      aaHls[which].attachMedia(v);
+    });
+  }
+  var lastAA = null;
+  function runAnalyze() {
+    var u = $("#aa-url").value.trim();
+    if (!u) { toast("请填写播放链接或 m3u8 地址"); return; }
+    var deep = $("#aa-deep").checked;
+    var st = $("#aa-status");
+    st.textContent = "分析中…（解析 m3u8 + 探测广告 + 生成去广告列表，请稍候）";
+    aaDestroy();
+    $("#aa-summary").classList.add("hide");
+    $("#aa-players").classList.add("hide");
+    $("#aa-segbox").classList.add("hide");
+    $("#aa-playlist").classList.add("hide");
+    api("/api/admin/filter/analyze-play", { method: "POST", body: { url: u, deep_hash: deep } })
+      .then(function (r) {
+        if (r.code !== 200) { st.textContent = r.msg || "分析失败"; return; }
+        var d = r.data || {};
+        lastAA = d;
+        st.textContent = "分析完成";
+        // 汇总
+        var kv = $("#aa-kv");
+        kv.innerHTML =
+          "<div><b>片段总数</b>" + esc(d.total) + "</div>" +
+          "<div><b>保留</b>" + esc(d.kept) + "</div>" +
+          "<div><b>剔除广告</b>" + esc(d.removed) + "</div>" +
+          "<div><b>广告区间</b>" + esc((d.ad_ranges || []).join(", ") || "未发现") + "</div>" +
+          "<div><b>检测方式</b>" + esc(d.mode || "-") + "</div>" +
+          "<div><b>建议方式</b>" + esc(d.suggest_mode || "-") + "</div>" +
+          "<div><b>总时长</b>" + (d.duration ? (d.duration.toFixed(1) + "s") : "-") + "</div>" +
+          "<div><b>广告时长</b>" + (d.ad_duration ? (d.ad_duration.toFixed(1) + "s") : "-") + "</div>" +
+          "<div><b>主索引</b>" + (d.is_master ? "是" : "否") + "</div>" +
+          "<div><b>建议规则名</b>" + esc(d.name || "-") + "</div>";
+        $("#aa-summary").classList.remove("hide");
+        // 片段表
+        var segs = d.segments || [];
+        $("#aa-segcount").textContent = "（共 " + (d.total || segs.length) + " 段，展示前 " + segs.length + " 段）";
+        var tb = $("#aa-segtbl tbody");
+        tb.innerHTML = segs.map(function (s) {
+          return "<tr" + (s.ad ? ' style="background:#fff1f0"' : "") + ">" +
+            "<td>" + s.index + "</td>" +
+            "<td>" + (s.duration ? s.duration.toFixed(3) : "-") + "s</td>" +
+            '<td style="color:' + (s.ad ? "#d4380d" : "#389e0d") + ';font-weight:600">' + (s.ad ? "广告" : "正常") + "</td>" +
+            '<td style="word-break:break-all;font-size:12px">' + esc(s.uri || "") + "</td></tr>";
+        }).join("");
+        $("#aa-segbox").classList.toggle("hide", segs.length === 0);
+        // 播放列表对比
+        $("#aa-orig").value = d.original_playlist || "";
+        $("#aa-filtered").value = d.filtered_playlist || "";
+        $("#aa-playlist").classList.remove("hide");
+        // 播放器
+        $("#aa-players").classList.remove("hide");
+        aaPlay(d.play_url_direct, "direct");
+        aaPlay(d.play_url_adfree, "adfree");
+      })
+      .catch(function (e) { st.textContent = "分析失败：" + (e.message || "网络错误"); });
+  }
+  $("#aa-go").onclick = runAnalyze;
+  $("#aa-url").addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); runAnalyze(); } });
+  $("#aa-copy-direct").onclick = function () { if (lastAA && lastAA.play_url_direct) copyText(lastAA.play_url_direct); else toast("暂无地址"); };
+  $("#aa-copy-adfree").onclick = function () { if (lastAA && lastAA.play_url_adfree) copyText(lastAA.play_url_adfree); else toast("暂无地址"); };
+  // 一键生成过滤规则：跳到广告过滤页 → 新增规则 → 用分析结果预填
+  $("#aa-gen-rule").onclick = function () {
+    if (!lastAA) { toast("请先分析"); return; }
+    switchTab("filter");
+    switchAdSub("m3u8");
+    var pre = {
+      name: lastAA.name || "",
+      url_prefixes: lastAA.url_prefixes || [],
+      fingerprint: lastAA.fingerprint || "",
+      detect_mode: lastAA.suggest_mode || "",
+      remark: lastAA.remark || ("由 M3U8 广告分析生成（" + (lastAA.name || "") + "）")
+    };
+    openFilterSiteModal("add", pre);
+  };
 
   // ===== 广告过滤 · 画面遮罩（内嵌广告） =====
   var allOverlayRules = [];

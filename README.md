@@ -139,6 +139,7 @@ curl http://127.0.0.1:9991/api/version
 | 🏠 首页 | 概览统计卡片（资源站数 / 已启用 / 平台映射数 / 当前版本）+ 快捷入口 |
 | 📡 资源站管理 | 纯净资源站 / 广告资源站 两个列表，增删改查 |
 | 🔗 平台映射 | 官方平台 → 优先资源站 |
+| 🔍 M3U8 广告分析 | 独立分析页：粘贴播放页 / m3u8 → 自动解析、探测插播广告（字幕 / 贴片）、生成去广告列表；**双播放器对比**（直连原始 vs 无广告过滤后）、TS 片段明细表、原始 / 过滤后 m3u8 对比、一键生成过滤规则 |
 | 🚫 广告过滤 | 一级菜单，子页签统管两类去广告：**去插播（M3U8）** 与 **画面遮罩（内嵌广告）**（站点/区域规则 CRUD + 探测 / 测试 / 调用日志 / 16:9 实时预览；画面遮罩支持**粘贴链接智能识别**与**绑定资源站**） |
 | 🛣️ 系统设置 | 路径设置：自定义 `/api/clean/` 调用路径 |
 | ⚙️ 系统 · 更新 | 版本 / 构建时间 / 更新仓库 / 定时更新状态 |
@@ -426,15 +427,15 @@ channel: stable   # stable=正式版（跟随 main 正式发布）/ prerelease=�
 
 ```bash
 # 正式版（stable 渠道）— main 分支
-git tag v0.0.19 && git push origin v0.0.19
+git tag v0.0.20 && git push origin v0.0.20
 
 # 先行版（prerelease 渠道）— 开发分支
-git tag v0.0.19-dev.1 && git push origin v0.0.19-dev.1
+git tag v0.0.20-dev.1 && git push origin v0.0.20-dev.1
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`
 - 产物自动打包 `zip` + `SHA256.txt`，挂到 GitHub Release
-- **版本号含 `-` 后缀的 tag（如 `v0.0.19-dev.1`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
+- **版本号含 `-` 后缀的 tag（如 `v0.0.20-dev.1`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
 - 版本号经 `-ldflags -X mxgjgt/model.Version=` 注入
 
 ---

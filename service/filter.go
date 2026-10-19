@@ -1025,3 +1025,102 @@ func absF(f float64) float64 {
 	}
 	return f
 }
+
+// AnalyzeAdM3U8 统一广告分析：解析播放链接 → 探测广告 → 生成去广告播放列表 → 建议规则
+// 供「M3U8 广告分析」页使用，返回分析明细 + 去广告 m3u8 + 建议规则字段。
+// deepHash=true 时对前若干片段采样内容哈希，辅助识别重复填充广告（有带宽开销）。
+func AnalyzeAdM3U8(rawURL string, deepHash bool) (*model.AdAnalyzeResult, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil, fmt.Errorf("请填写播放链接或 m3u8 地址")
+	}
+
+	// 播放页 → 直链 m3u8（本身就是 m3u8 则直接用）
+	resolved := rawURL
+	if !strings.Contains(strings.ToLower(resolved), ".m3u8") {
+		s, err := ResolvePlayStream(rawURL)
+		if err != nil || s == "" {
+			if err == nil {
+				err = fmt.Errorf("未解析出 m3u8")
+			}
+			return nil, fmt.Errorf("未能从播放链接解析出 m3u8：%v", err)
+		}
+		resolved = s
+	}
+
+	// 探测（解析 + 广告识别）
+	pr, err := ProbeM3U8(resolved, nil, deepHash)
+	if err != nil {
+		return nil, err
+	}
+
+	// 过滤（生成去广告播放列表）
+	fr, err := FilterM3U8(resolved, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &model.AdAnalyzeResult{
+		OK:               true,
+		SourceURL:        rawURL,
+		IndexURL:         fr.IndexURL,
+		IsMaster:         pr.IsMaster,
+		Variants:         pr.Variants,
+		Total:            fr.Total,
+		Kept:             fr.Kept,
+		Removed:          fr.Removed,
+		AdRanges:         fr.AdRanges,
+		HasAd:            len(fr.AdRanges) > 0,
+		Mode:             fr.Mode,
+		Fingerprint:      pr.Fingerprint,
+		SuggestMode:      pr.SuggestMode,
+		Segments:         pr.Segments,
+		FilteredPlaylist: fr.Playlist,
+		PlayURLDirect:    fr.IndexURL,
+	}
+
+	// 时长统计
+	var totalDur, adDur float64
+	for _, s := range fr.Segments {
+		if s.Duration > 0 {
+			totalDur += s.Duration
+			if s.Ad {
+				adDur += s.Duration
+			}
+		}
+	}
+	out.Duration = totalDur
+	out.AdDuration = adDur
+
+	// 原始 m3u8（前 30 行，供对比）
+	if orig, err := FetchText(fr.IndexURL, nil); err == nil {
+		out.OriginalPlaylist = headLinesStr(orig, 30)
+	}
+
+	// 建议规则字段：取主机名
+	if pu, err := url.Parse(fr.IndexURL); err == nil {
+		host := pu.Hostname()
+		if host != "" {
+			out.URLPrefixes = []string{host}
+			out.Name = strings.TrimPrefix(host, "www.")
+			out.Remark = "由 M3U8 广告分析自动生成（" + host + "）"
+		}
+	}
+	if out.SuggestMode == "" {
+		if out.HasAd {
+			out.SuggestMode = "auto"
+		} else {
+			out.SuggestMode = "direct"
+		}
+	}
+	return out, nil
+}
+
+// headLinesStr 取文本前 n 行
+func headLinesStr(s string, n int) string {
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
+}

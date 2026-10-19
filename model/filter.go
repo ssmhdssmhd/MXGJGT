@@ -119,6 +119,37 @@ type FilterTestResult struct {
 	Error    string         `json:"error,omitempty"`
 }
 
+// ======== M3U8 广告分析（统一分析 + 播放 + 生成规则） ========
+
+// AdAnalyzeResult M3U8 广告分析结果：探测广告 + 生成去广告播放列表 + 建议规则
+// 供「M3U8 广告分析」页使用：展示分析明细、直连播放 / 无广告内嵌播放、一键生成过滤规则
+type AdAnalyzeResult struct {
+	OK               bool           `json:"ok"`
+	SourceURL        string         `json:"source_url"`         // 用户输入的播放链接 / m3u8
+	IndexURL         string         `json:"index_url"`          // 实际解析到的媒体索引（m3u8）
+	IsMaster         bool           `json:"is_master"`          // 是否主索引
+	Variants         []string       `json:"variants"`           // 主索引子列表
+	Total            int            `json:"total"`              // 片段总数
+	Kept             int            `json:"kept"`               // 保留片段数
+	Removed          int            `json:"removed"`            // 剔除广告片段数
+	AdRanges         []string       `json:"ad_ranges"`          // 广告区间（如 0-3）
+	HasAd            bool           `json:"has_ad"`             // 是否探测到广告
+	Mode             string         `json:"mode"`               // 实际检测方式
+	Fingerprint      string         `json:"fingerprint"`        // 广告时长指纹建议
+	SuggestMode      string         `json:"suggest_mode"`       // 建议检测方式
+	Segments         []ProbeSegment `json:"segments"`           // 片段明细（前若干条）
+	FilteredPlaylist string         `json:"filtered_playlist"`  // 去广告后的 m3u8（供内嵌无广告播放）
+	OriginalPlaylist string         `json:"original_playlist"`  // 原始 m3u8（前若干行，供对比）
+	PlayURLDirect    string         `json:"play_url_direct"`    // 直连播放地址（原始 m3u8）
+	PlayURLAdFree    string         `json:"play_url_adfree"`    // 无广告播放地址（过滤后的 m3u8）
+	Duration         float64        `json:"duration"`           // 总时长（秒）
+	AdDuration       float64        `json:"ad_duration"`        // 广告时长（秒）
+	Name             string         `json:"name"`               // 建议规则名（取主机名）
+	URLPrefixes      []string       `json:"url_prefixes"`       // 建议 URL 匹配前缀
+	Remark           string         `json:"remark"`             // 备注
+	Error            string         `json:"error,omitempty"`
+}
+
 // ======== 请求体 ========
 
 // FilterSiteRequest 新增 / 更新站点规则

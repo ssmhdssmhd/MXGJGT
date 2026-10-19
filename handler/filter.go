@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -191,6 +192,37 @@ func handleAdminFilterAnalyze(c *gin.Context) {
 	c.JSON(http.StatusOK, model.Response{
 		Code: 200,
 		Msg:  "分析完成，已自动生成规则字段",
+		Data: res,
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
+// handleAdminFilterAnalyzePlay M3U8 广告分析：解析播放链接 → 探测广告 →
+// 生成去广告播放列表 + 直连/无广告播放地址 + 建议规则字段（供「M3U8 广告分析」页）
+func handleAdminFilterAnalyzePlay(c *gin.Context) {
+	var req struct {
+		URL      string `json:"url"`
+		DeepHash bool   `json:"deep_hash"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(200, model.Fail(400, "参数错误"))
+		return
+	}
+	u := strings.TrimSpace(req.URL)
+	if u == "" {
+		c.JSON(200, model.Fail(400, "请填写播放链接或 m3u8 地址"))
+		return
+	}
+	res, err := service.AnalyzeAdM3U8(u, req.DeepHash)
+	if err != nil {
+		c.JSON(200, model.Fail(400, "分析失败: "+err.Error()))
+		return
+	}
+	// 无广告播放地址：通过本服务去插播接口返回过滤后的 m3u8
+	res.PlayURLAdFree = publicBase(c) + config.PrimaryCleanPath() + "/?type=m3u8&url=" + url.QueryEscape(res.IndexURL)
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  "分析完成",
 		Data: res,
 		Time: time.Now().Format("2006-01-02 15:04:05"),
 	})

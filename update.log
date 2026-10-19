@@ -1,3 +1,59 @@
+MXGJGT v0.0.20-dev.1 202610192006
+================================
+
+## 先行版新增：M3U8 广告分析（侧边栏独立页）
+
+> 需求：在先行版侧边栏「广告过滤」上方新增「M3U8 广告分析」，自动分析广告并去广告（插播 / 字幕等），支持 TS 片段级分析、直连播放与无广告内嵌播放对比，并一键生成过滤规则。
+
+### ✨ 新增
+
+**1. 侧边栏独立页「M3U8 广告分析」**
+
+- 位于「平台映射」与「广告过滤」之间，独立 Tab（`data-tab="ad-analyze"`）
+- 粘贴**播放页链接**或 **m3u8 直链**即可一键分析（可选深度内容哈希采样）
+
+**2. 自动分析 + 去广告**
+
+- 自动解析播放页 → m3u8 直链，调用 `ProbeM3U8` 探测插播广告（含字幕 / 贴片）
+- 调用 `FilterM3U8` 生成去广告播放列表，统计片段总数 / 保留 / 剔除 / 广告区间 / 总时长 / 广告时长
+- 展示检测方式、建议检测方式、时长指纹建议
+
+**3. 双播放器对比**
+
+- **直连播放**：原始 m3u8（`play_url_direct`）
+- **无广告内嵌播放**：过滤后的 m3u8（`play_url_adfree`，走本服务去插播接口）
+- 两个 video 标签 + hls.js 独立实例，可同时播放对比
+
+**4. 片段明细表 + 播放列表对比**
+
+- 表格展示每个 TS 片段：序号 / 时长 / 广告标记（广告行高亮红底）/ 片段地址
+- 左右对比「原始 m3u8（前 30 行）」与「去广告后 m3u8」
+
+**5. 一键生成过滤规则**
+
+- 分析完成后点「一键生成过滤规则」，自动跳转到「广告过滤 → 去插播 → 新增规则」
+- 预填：规则名（主机名）、URL 匹配前缀、时长指纹、建议检测方式、备注
+
+**6. 后端接口**
+
+- `POST /api/admin/filter/analyze-play`：返回 `AdAnalyzeResult`（含直连 / 无广告播放地址 + 建议规则字段）
+- `service.AnalyzeAdM3U8`：统一封装解析 → 探测 → 过滤 → 统计 → 建议字段
+
+### 📁 变更文件
+
+```
+modified: model/filter.go       # 新增 AdAnalyzeResult 结构体
+modified: service/filter.go     # 新增 AnalyzeAdM3U8 + headLinesStr
+modified: handler/filter.go     # 新增 handleAdminFilterAnalyzePlay + net/url 导入
+modified: handler/api.go        # 注册 POST /api/admin/filter/analyze-play
+modified: handler/mxadmin.html  # 侧边栏菜单项 + #tab-ad-analyze 页面 + 双播放器 + 片段表 + 一键生成规则
+modified: model/version.go      # 0.0.19-dev.1 → 0.0.20-dev.1
+modified: Makefile              # VERSION 0.0.20-dev.1
+modified: update.log            # 本更新日志
+```
+
+================================
+
 MXGJGT v0.0.19-dev.1 202610200135
 ================================
 
