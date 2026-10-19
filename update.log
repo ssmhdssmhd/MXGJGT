@@ -1,3 +1,54 @@
+MXGJGT v0.0.18-dev.1 202610200113
+================================
+
+## 先行版优化：画面遮罩「链接智能识别 + 绑定资源站」+「系统·更新」分卡片布局
+
+> 需求：①画面遮罩支持输入链接自动判断广告位置 / 大小，并新增「绑定资源站」——调用该资源站时自动套用对应遮罩，避免手动逐个配置；②后台「系统 · 更新」页布局过于拥挤，需更美观、层级更清晰。
+
+### ✨ 新增
+
+**1. 画面遮罩 · 链接智能识别**
+
+- 新增接口 `POST /api/admin/adfilter/overlay/identify`（body: `url`）：粘贴播放页 / m3u8 / 广告图 / 资源站链接，自动返回匹配域名、命中资源站、候选遮罩区域
+- 识别策略分级：链接类型（`page`/`m3u8`/`image`/`unknown`）→ 域名解析 → 资源站匹配（`FindSiteByHost` 宽松匹配，推荐绑定）→ 候选区域
+- 图片链接：下载取宽高比，按 `相对宽 × (图高/图宽) × (16/9)` 推算遮罩大小并放到常见广告位（`image-ratio`）
+- 页面 / m3u8：无头浏览器抓帧（优先截 `<video>`，退化整页）→ **纯 Go 启发式**识别（灰度 → 梯度 → 阈值二值化 → 16×9 粗网格边缘密度 → 连通域合并），输出「像文字 / 图标」的候选框（`frame-detect`）；抓帧不可用时给出常见广告位预设（`preset`）
+- 若已有同域名 / 同资源站规则，返回 `reuse_rule_id` 提示可直接编辑复用
+
+**2. 画面遮罩 · 绑定资源站（避免手动遮罩）**
+
+- 规则新增 `site_ids`（绑定资源站，ID 或名称均可）：`MatchOverlayRule(u, siteName)` 匹配顺序改为 **①资源站绑定优先 → ②URL 前缀/正则**
+- `/api/clean` 与 `/api/search` 下发 `ad` 时，改为按**实际命中的资源站**匹配，绑定后调用该资源站即自动套用，无需为每个播放域名逐个配遮罩
+- 规则新增 `source_url` 记录识别来源链接，便于回溯
+
+**3. 后台 UI**
+
+- 「广告过滤 · 画面遮罩」弹窗新增「智能识别」区（链接输入 + 自动识别）、「绑定资源站」多选、候选区域芯片（点击即加入并可继续微调）
+- 规则列表新增「绑定资源站」列（显示资源站名 / 未绑定）
+
+### 🎨 优化
+
+**后台「系统 · 更新」布局**
+
+- 由「信息 + 渠道 + 按钮堆叠」改为**分卡片网格**：左「版本信息」（键值行列表）/ 右「更新渠道」（说明 + 下拉 + 切换），窄屏自动单列
+- 操作按钮（重载配置 / 立即更新）与提示统一收拢到底部 `sysactions` 分隔区，减少拥挤、层级更清晰
+
+### 📁 变更文件
+
+```
+modified: model/adfilter.go        # AdOverlayRule 新增 site_ids / source_url；AdOverlayIdentify Request/Result
+modified: config/config.go         # MatchOverlayRule 增加 siteName 参数（绑定资源站优先）+ cleanStrings / FindSiteByHost / HostOf + 模板注释
+new:      service/overlay_detect.go # 抓帧截图 + 纯 Go 边缘密度启发式候选区域检测 + ImageConfig
+modified: handler/adfilter.go      # 新增 /overlay/identify（识别逻辑 + 预设 + 图片比例）+ applyOverlayReq 支持 site_ids / source_url
+modified: handler/api.go           # 注册 identify 路由；clean/search 按命中资源站下发 ad
+modified: handler/mxadmin.html     # 画面遮罩智能识别 + 资源站绑定 UI；「系统·更新」分卡片布局
+modified: model/version.go         # 0.0.17-dev.1 → 0.0.18-dev.1
+modified: Makefile                 # VERSION 0.0.18-dev.1
+modified: README.md                # 智能识别 / 绑定资源站 / identify 接口 / 项目结构 / 云端编译版本号
+```
+
+================================
+
 MXGJGT v0.0.17-dev.1 202610192039
 ================================
 

@@ -10,7 +10,7 @@
 
 .PHONY: all build release install test clean zip-sha
 
-VERSION   := 0.0.17-dev.1
+VERSION   := 0.0.18-dev.1
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS   := -s -w -X mxgjgt/model.Version=$(VERSION) -X mxgjgt/model.BuildTime=$(BUILD_TIME)
 

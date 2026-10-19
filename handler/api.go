@@ -27,40 +27,41 @@ func RegisterRoutes(r *gin.Engine) {
 		// 后台管理接口：需登录态
 		admin := api.Group("/admin", adminAuth())
 		{
-			admin.GET("/sites",        handleAdminListSites)
-			admin.POST("/site/auto",   handleAdminAutoCMS)
-			admin.GET("/site/test",    handleAdminTestSite)
-			admin.GET("/site/search",  handleAdminSearchSite)
-			admin.GET("/site/detail",  handleAdminSiteDetail)
-			admin.GET("/stream",       handleAdminPlayStream)
+			admin.GET("/sites", handleAdminListSites)
+			admin.POST("/site/auto", handleAdminAutoCMS)
+			admin.GET("/site/test", handleAdminTestSite)
+			admin.GET("/site/search", handleAdminSearchSite)
+			admin.GET("/site/detail", handleAdminSiteDetail)
+			admin.GET("/stream", handleAdminPlayStream)
 			admin.GET("/update/check", handleAdminUpdateCheck)
 			admin.POST("/update/channel", handleAdminUpdateChannel)
-			admin.POST("/site/sync",   handleAdminSyncSite)
-			admin.POST("/site",        handleAdminAddSite)
-			admin.PUT("/site/:id",     handleAdminUpdateSite)
-			admin.DELETE("/site/:id",  handleAdminDelSite)
-			admin.GET("/mappings",     handleAdminListMap)
-			admin.POST("/mapping",     handleAdminSetMap)
-			admin.POST("/reload",      handleAdminReload)
+			admin.POST("/site/sync", handleAdminSyncSite)
+			admin.POST("/site", handleAdminAddSite)
+			admin.PUT("/site/:id", handleAdminUpdateSite)
+			admin.DELETE("/site/:id", handleAdminDelSite)
+			admin.GET("/mappings", handleAdminListMap)
+			admin.POST("/mapping", handleAdminSetMap)
+			admin.POST("/reload", handleAdminReload)
 
 			// M3U8 广告过滤（去插播）
-			admin.GET("/filter/sites",       handleAdminFilterSites)
-			admin.POST("/filter/site",       handleAdminFilterSiteAdd)
-			admin.PUT("/filter/site/:id",    handleAdminFilterSiteUpdate)
+			admin.GET("/filter/sites", handleAdminFilterSites)
+			admin.POST("/filter/site", handleAdminFilterSiteAdd)
+			admin.PUT("/filter/site/:id", handleAdminFilterSiteUpdate)
 			admin.DELETE("/filter/site/:id", handleAdminFilterSiteDel)
-			admin.POST("/filter/probe",      handleAdminFilterProbe)
-			admin.POST("/filter/test",       handleAdminFilterTest)
-			admin.POST("/filter/analyze",    handleAdminFilterAnalyze)
-			admin.GET("/filter/logs",        handleAdminFilterLogs)
+			admin.POST("/filter/probe", handleAdminFilterProbe)
+			admin.POST("/filter/test", handleAdminFilterTest)
+			admin.POST("/filter/analyze", handleAdminFilterAnalyze)
+			admin.GET("/filter/logs", handleAdminFilterLogs)
 
 			// 系统设置 · 路径设置（自定义 clean 调用路径）
-			admin.GET("/cleanpaths",  handleAdminCleanPaths)
+			admin.GET("/cleanpaths", handleAdminCleanPaths)
 			admin.POST("/cleanpaths", handleAdminSaveCleanPaths)
 
 			// 广告过滤 · 画面遮罩（内嵌广告 / 贴片）
-			admin.GET("/adfilter/overlays",       handleAdminAdOverlayRules)
-			admin.POST("/adfilter/overlay",       handleAdminAdOverlayRuleAdd)
-			admin.PUT("/adfilter/overlay/:id",    handleAdminAdOverlayRuleUpdate)
+			admin.GET("/adfilter/overlays", handleAdminAdOverlayRules)
+			admin.POST("/adfilter/overlay", handleAdminAdOverlayRuleAdd)
+			admin.POST("/adfilter/overlay/identify", handleAdminAdOverlayIdentify)
+			admin.PUT("/adfilter/overlay/:id", handleAdminAdOverlayRuleUpdate)
 			admin.DELETE("/adfilter/overlay/:id", handleAdminAdOverlayRuleDel)
 		}
 
@@ -160,8 +161,12 @@ func handleClean(c *gin.Context) {
 	resp := model.OK(jim, jj, u)
 	// qcb：去插播（M3U8 广告过滤）后的播放地址
 	resp.QCB = buildQCB(c, u)
-	// ad：画面遮罩（内嵌广告）规则，播放器据此叠加遮罩
-	resp.Ad = resolveAdOverlay(u)
+	// ad：画面遮罩（内嵌广告）规则；按实际命中的资源站优先自动套用
+	bestSite := ""
+	if best != nil {
+		bestSite = best.Site
+	}
+	resp.Ad = resolveAdOverlay(u, bestSite)
 	resp.Time = time.Now().Format("2006-01-02 15:04:05")
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {
@@ -269,7 +274,11 @@ func handleSearch(c *gin.Context) {
 	jim, jj, url, best := resolvePlay(wd, ep, "")
 	resp := model.OK(jim, jj, url)
 	resp.QCB = buildQCB(c, url)
-	resp.Ad = resolveAdOverlay(url)
+	bestSite := ""
+	if best != nil {
+		bestSite = best.Site
+	}
+	resp.Ad = resolveAdOverlay(url, bestSite)
 	resp.Time = time.Now().Format("2006-01-02 15:04:05")
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {
@@ -389,12 +398,12 @@ func handleVersion(c *gin.Context) {
 	c.JSON(200, model.Response{
 		Code: 200,
 		Data: map[string]any{
-			"version":   Version,
-			"build":     BuildTime,
-			"repo_url":  config.GetConfig().Updater.RepoURL,
-			"updater":   config.GetConfig().Updater.Enabled,
-			"channel":   config.GetUpdateChannel(),
-			"kfz":       "射手沫蝴蝶",
+			"version":  Version,
+			"build":    BuildTime,
+			"repo_url": config.GetConfig().Updater.RepoURL,
+			"updater":  config.GetConfig().Updater.Enabled,
+			"channel":  config.GetUpdateChannel(),
+			"kfz":      "射手沫蝴蝶",
 		},
 	})
 }
@@ -440,6 +449,8 @@ func handleNotFound(c *gin.Context) {
 
 // errMsg 保留（用于兼容）
 func errMsg(err error) string {
-	if err == nil { return "" }
+	if err == nil {
+		return ""
+	}
 	return err.Error()
 }

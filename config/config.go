@@ -26,12 +26,12 @@ const (
 )
 
 var (
-	appConfig   *model.AppConfig
-	sites       []model.ResourceSite
-	mappings    []model.SiteMapping
-	cleanPaths   []model.CleanPath
-	filterSites  []model.FilterSite
-	overlayRules []model.AdOverlayRule
+	appConfig     *model.AppConfig
+	sites         []model.ResourceSite
+	mappings      []model.SiteMapping
+	cleanPaths    []model.CleanPath
+	filterSites   []model.FilterSite
+	overlayRules  []model.AdOverlayRule
 	updateChannel string
 
 	dataDir  string
@@ -311,6 +311,8 @@ func normalizeOverlayRules(rs []model.AdOverlayRule) {
 		if rs[i].ID == "" {
 			rs[i].ID = randomID()
 		}
+		rs[i].SiteIDs = cleanStrings(rs[i].SiteIDs)
+		rs[i].SourceURL = strings.TrimSpace(rs[i].SourceURL)
 		for j := range rs[i].Regions {
 			r := &rs[i].Regions[j]
 			if r.Mode == "" {
@@ -324,6 +326,50 @@ func normalizeOverlayRules(rs []model.AdOverlayRule) {
 			}
 		}
 	}
+}
+
+// cleanStrings 去空白、去空项、去重（保持原有顺序）
+func cleanStrings(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := make(map[string]struct{}, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+// overlayBoundToSite 判断画面遮罩规则是否绑定了某个资源站
+// siteName 为运行时的资源站名称；ids 为规则里配置的绑定项（可能是站点 ID 也可能是名称）
+func overlayBoundToSite(ids []string, siteName string) bool {
+	siteName = strings.TrimSpace(siteName)
+	if siteName == "" || len(ids) == 0 {
+		return false
+	}
+	for _, id := range ids {
+		if id == siteName {
+			return true
+		}
+	}
+	// 绑定项里既可能写的是站点 ID，也可能写的是名称：按名称反查 ID 再比对
+	for _, s := range sites {
+		if s.Name != siteName {
+			continue
+		}
+		for _, id := range ids {
+			if id == s.ID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // matchURLRules 按前缀 / 正则匹配 URL：
@@ -402,12 +448,29 @@ func MatchFilterSite(u string) *model.FilterSite {
 	return nil
 }
 
-// MatchOverlayRule 按 URL 前缀 / 正则匹配画面遮罩规则（未命中返回 nil）
-// 命中后可把规则里的 regions 下发播放器，用于遮挡烧进画面的广告文字 / 台标 / 二维码
-func MatchOverlayRule(u string) *model.AdOverlayRule {
+// MatchOverlayRule 为一次播放匹配画面遮罩规则（未命中返回 nil）
+// 匹配顺序：① 绑定的资源站优先（siteName 命中即套用，无需再依赖播放域名）
+//
+//	② 其次按播放域名前缀 / 正则匹配
+//
+// siteName 为空时仅按 URL 规则匹配（兼容旧调用）
+func MatchOverlayRule(u, siteName string) *model.AdOverlayRule {
 	host := hostOf(u)
 	mu.RLock()
 	defer mu.RUnlock()
+	// ① 资源站绑定优先：避免为每个播放域名手工配置遮罩
+	if strings.TrimSpace(siteName) != "" {
+		for i := range overlayRules {
+			s := &overlayRules[i]
+			if !s.Enabled || len(s.Regions) == 0 {
+				continue
+			}
+			if overlayBoundToSite(s.SiteIDs, siteName) {
+				return s
+			}
+		}
+	}
+	// ② URL 前缀 / 正则
 	for i := range overlayRules {
 		s := &overlayRules[i]
 		if !s.Enabled || len(s.Regions) == 0 {
@@ -426,6 +489,48 @@ func hostOf(u string) string {
 		return pu.Hostname()
 	}
 	return ""
+}
+
+// HostOf 导出 hostOf，供识别逻辑复用
+func HostOf(u string) string { return hostOf(u) }
+
+// FindSiteByHost 按主机名匹配已配置的资源站（用于「自动识别」推荐绑定站点）
+// 采用包含关系做宽松匹配，返回命中的站点副本；未命中返回 nil
+func FindSiteByHost(host string) *model.ResourceSite {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return nil
+	}
+	mu.RLock()
+	defer mu.RUnlock()
+	var best *model.ResourceSite
+	bestLen := 0
+	for i := range sites {
+		sh := overlaySiteHost(sites[i].URL)
+		if sh == "" {
+			continue
+		}
+		if host == sh || strings.HasSuffix(host, "."+sh) || strings.HasSuffix(sh, "."+host) || strings.Contains(host, sh) {
+			if len(sh) > bestLen {
+				s := sites[i]
+				best = &s
+				bestLen = len(sh)
+			}
+		}
+	}
+	return best
+}
+
+// overlaySiteHost 取资源站配置 URL 的主机名（兼容缺少协议、带 {keyword} 占位符的写法）
+func overlaySiteHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "http://" + raw
+	}
+	return strings.ToLower(hostOf(raw))
 }
 
 // Reload 重新从磁盘加载
@@ -715,6 +820,8 @@ func defaultOverlayRulesYAML() string {
 #
 #  url_prefixes: 按播放域名主机名前缀匹配（任一命中即命中该规则）
 #  url_regexes:  默认匹配主机名；以 ^ 开头或含 :// 时匹配整条 URL
+#  site_ids:     绑定的资源站（ID 或名称）；命中该资源站时**无需**再依赖播放域名，
+#                直接套用本规则 —— 用于「绑定资源站、避免手动逐个配遮罩」
 # =============================================
 
 - id: "demo"
@@ -723,6 +830,7 @@ func defaultOverlayRulesYAML() string {
   sort: 0
   url_prefixes: ["svip.jijiplay"]
   url_regexes: []
+  site_ids: []
   regions:
     - x: 0.02
       y: 0.03

@@ -131,6 +131,23 @@
     font-family:ui-monospace,Menlo,monospace;background:#fff;color:var(--ink)}
   .ov-row select{font-family:inherit}
   .ov-row input[type=color]{padding:2px;height:34px;cursor:pointer}
+  /* 画面遮罩：链接识别 + 资源站绑定 + 候选区域 */
+  .ov-ai{border:1px dashed #d9d2f2;background:#faf8ff;border-radius:13px;padding:12px 14px;margin-bottom:14px}
+  .ov-ai .t{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--brand);margin-bottom:9px}
+  .ov-ai-row{display:flex;gap:8px;flex-wrap:wrap}
+  .ov-ai-row input{flex:1 1 260px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:13px;outline:none;font-family:inherit}
+  .ov-ai-row input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(168,85,247,.16)}
+  .ov-ai-info{font-size:12px;color:var(--sub);line-height:1.7;margin-top:9px;word-break:break-all}
+  .ov-ai-info b{color:var(--brand)}
+  .ov-cand{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .ov-chip{border:1px solid #e2d9fb;background:#fff;color:#6b5ba0;font-size:12px;font-weight:600;padding:6px 11px;
+    border-radius:999px;cursor:pointer;font-family:inherit;transition:.15s}
+  .ov-chip:hover{background:#f3effb;border-color:var(--brand);color:var(--brand)}
+  .ov-chip small{color:#a9a3bd;font-weight:600}
+  .ov-chip.on{background:#e7f7ed;border-color:#b7e4c7;color:var(--ok)}
+  .ov-sites{display:flex;flex-wrap:wrap;gap:8px;max-height:158px;overflow:auto;padding:2px 0}
+  .ov-sites label{display:flex;align-items:center;gap:6px;font-size:13px;background:#f6f3fd;padding:7px 11px;border-radius:9px;cursor:pointer}
+  .ov-sites label.ads{background:#fff4ec}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   th{color:var(--sub);font-weight:600;font-size:12px}
@@ -150,6 +167,22 @@
   .empty{color:var(--sub);font-size:14px;padding:14px 0}
   .kv{display:flex;gap:14px;flex-wrap:wrap;font-size:14px}
   .kv div b{color:var(--sub);font-weight:600;margin-right:6px}
+  /* 系统 · 更新：分卡片布局 */
+  .sysgrid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
+  .syscard{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fbfaff}
+  .syscard h4{margin:0 0 12px;font-size:13px;font-weight:700;color:var(--brand);display:flex;align-items:center;gap:6px}
+  .syscard .hint{font-size:12px;color:var(--sub);line-height:1.7;margin:0 0 12px}
+  .syscard .row{gap:10px;align-items:center;flex-wrap:nowrap}
+  .syscard .row select{flex:1 1 auto;min-width:0;padding:10px 12px;border:1px solid var(--line);
+    border-radius:11px;font-size:13px;outline:none;font-family:inherit;background:#fff;color:var(--ink)}
+  .kv.rows{flex-direction:column;gap:0;font-size:13px}
+  .kv.rows div{display:flex;justify-content:space-between;align-items:center;gap:12px;
+    padding:9px 0;border-bottom:1px dashed var(--line)}
+  .kv.rows div:last-child{border-bottom:0;padding-bottom:0}
+  .kv.rows div b{color:var(--sub);font-weight:600;margin:0;flex:none}
+  .sysactions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+  .sysactions .empty{margin:0;padding:0}
+  .sysactions .spacer{flex:1}
 
   /* 详情弹窗内嵌播放 */
   .player{background:#0b0e17;border-radius:11px;overflow:hidden;margin-bottom:14px}
@@ -190,6 +223,7 @@
     .menu button{white-space:nowrap}
     .burger{margin-top:0;margin-left:auto}
     .modal .grid{grid-template-columns:1fr}
+    .sysgrid{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -358,6 +392,7 @@
               <button class="btn primary sm" id="btn-add-overlay">新增规则</button>
             </h3>
             <p class="empty">针对「广告文字 / 台标 / 二维码烧进画面像素」的内嵌广告：命中播放域名后，服务端在 <code class="mono">/api/clean</code> 响应里以 <code class="mono">ad</code> 字段下发遮罩区域，播放器按相对坐标叠加遮罩（零转码、零带宽、秒级生效）。</p>
+            <p class="empty">新增规则时可直接<b>粘贴链接自动识别</b>：自动解析匹配域名、推荐<b>绑定资源站</b>（绑定后调用该资源站即自动套用，无需再逐个配域名）并给出候选遮罩区域。</p>
             <div id="overlay-box"></div>
           </div>
         </section>
@@ -376,24 +411,32 @@
 
         <!-- 系统 -->
         <section id="tab-sys" class="card hide">
-          <h2>系统信息 <span class="spacer"></span>
+          <h2>系统 · 更新 <span class="spacer"></span>
             <button class="btn ghost sm" id="btn-check">检查更新</button>
           </h2>
-          <div class="kv" id="sys-info"></div>
-          <div style="margin-top:18px" class="row">
-            <label class="lbl" for="upd-channel">更新渠道</label>
-            <select id="upd-channel">
-              <option value="stable">正式版（stable · 跟随 main 正式发布）</option>
-              <option value="prerelease">先行版（prerelease · 跟随开发分支预发布）</option>
-            </select>
-            <button class="btn ghost sm" id="btn-save-channel">切换渠道</button>
+          <div class="sysgrid">
+            <div class="syscard">
+              <h4>版本信息</h4>
+              <div class="kv rows" id="sys-info"></div>
+            </div>
+            <div class="syscard">
+              <h4>更新渠道</h4>
+              <p class="hint">正式版仅拉取正式发布（GitHub 自动排除预发布）；先行版拉取最新一条发布（含预发布），用于测试与抢先体验。切换后请重新检查更新。</p>
+              <div class="row tight">
+                <select id="upd-channel">
+                  <option value="stable">正式版（stable · 跟随 main 正式发布）</option>
+                  <option value="prerelease">先行版（prerelease · 跟随开发分支预发布）</option>
+                </select>
+                <button class="btn ghost sm" id="btn-save-channel">切换渠道</button>
+              </div>
+            </div>
           </div>
-          <p class="empty">正式版仅拉取正式发布（GitHub 自动排除预发布）；先行版拉取最新一条发布（含预发布），用于测试与抢先体验。</p>
-          <div style="margin-top:18px" class="row">
+          <div class="sysactions">
             <button class="btn ghost" id="btn-reload">重载配置</button>
             <button class="btn primary" id="btn-update">立即更新</button>
+            <span class="spacer"></span>
+            <p class="empty" id="update-msg"></p>
           </div>
-          <p class="empty" id="update-msg"></p>
         </section>
       </div>
     </div>
@@ -566,6 +609,7 @@
     api("/api/admin/sites").then(function (r) {
       allSites = (r.data || {}).sites || [];
       renderSites(allSites); renderHome();
+      if ($("#o-sites")) renderOvSites(ovSelectedSites);
     }).catch(function (e) {
       $("#sites-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>";
       $("#sites-box-ads").innerHTML = "";
@@ -1342,6 +1386,8 @@
   var allOverlayRules = [];
   // 当前编辑中的遮罩区域（弹窗内唯一状态源）
   var regions = [];
+  // 当前弹窗里已勾选的资源站绑定项
+  var ovSelectedSites = [];
   function overlayById(id) { return allOverlayRules.filter(function (x) { return x.id === id; })[0]; }
   function loadOverlayRules() {
     api("/api/admin/adfilter/overlays").then(function (r) {
@@ -1351,11 +1397,16 @@
   }
   function renderOverlayRules(list) {
     if (!list.length) { $("#overlay-box").innerHTML = '<p class="empty">暂无画面遮罩规则，点击右上角「新增规则」。</p>'; return; }
-    var h = ["<table><thead><tr><th>名称 / ID</th><th>状态</th><th>匹配前缀</th><th>遮罩区域</th><th>操作</th></tr></thead><tbody>"];
+    var h = ["<table><thead><tr><th>名称 / ID</th><th>状态</th><th>绑定资源站</th><th>匹配前缀</th><th>遮罩区域</th><th>操作</th></tr></thead><tbody>"];
     list.forEach(function (r) {
+      var binds = (r.site_ids || []).map(function (id) {
+        var s = siteById(id);
+        return s ? s.name : id;
+      }).join("、");
       h.push("<tr>" +
         "<td>" + esc(r.name) + "<div><code class='mono'>" + esc(r.id) + "</code></div></td>" +
         "<td>" + (r.enabled ? '<span class="pill on">启用</span>' : '<span class="pill off">停用</span>') + "</td>" +
+        "<td>" + (binds ? '<span class="pill on">' + esc(binds) + "</span>" : '<span class="pill off">未绑定</span>') + "</td>" +
         "<td><code class='mono'>" + esc((r.url_prefixes || []).join(", ") || "-") + "</code></td>" +
         "<td>" + (r.regions || []).length + " 个</td>" +
         "<td><div class='ops'>" +
@@ -1403,11 +1454,21 @@
     regions = (rule.regions || []).map(function (r) { return Object.assign({}, r); });
     $("#modal-root").innerHTML =
       '<div class="mask"><div class="modal wide"><h3>' + (isEdit ? "编辑画面遮罩规则" : "新增画面遮罩规则") + "</h3>" +
+      '<div class="ov-ai">' +
+        '<div class="t">✦ 智能识别 · 输入链接自动判断广告（位置 / 大小）</div>' +
+        '<div class="ov-ai-row">' +
+          '<input id="o-link" placeholder="粘贴播放页 / m3u8 / 广告图 / 资源站链接" value="' + esc(rule.source_url) + '">' +
+          '<button class="btn primary sm" id="o-identify" type="button">自动识别</button>' +
+        '</div>' +
+        '<div class="ov-ai-info" id="o-ai-info">粘贴链接后点击「自动识别」：自动填入匹配域名、推荐绑定资源站，并给出候选遮罩区域。</div>' +
+        '<div class="ov-cand" id="o-cand"></div>' +
+      '</div>' +
       '<div class="grid">' +
       '<div class="field"><label>名称 *</label><input id="o-name" value="' + esc(rule.name) + '"></div>' +
       '<div class="field"><label>启用</label><select id="o-enabled"><option value="1"' + (rule.enabled === false ? "" : " selected") + '>启用</option><option value="0"' + (rule.enabled === false ? " selected" : "") + '>停用</option></select></div>' +
       '<div class="field"><label>排序 sort</label><input id="o-sort" type="number" value="' + esc(rule.sort == null ? 0 : rule.sort) + '"></div>' +
       '<div class="field"><label>备注</label><input id="o-remark" value="' + esc(rule.remark) + '"></div>' +
+      '<div class="field full"><label>绑定资源站（绑定后，调用该资源站即自动套用遮罩，无需再按播放域名配置）</label><div class="ov-sites" id="o-sites"></div></div>' +
       '<div class="field full"><label>URL 匹配前缀（一行一个，按播放域名主机名匹配）</label><textarea class="ta" rows="2" id="o-prefixes">' + esc((rule.url_prefixes || []).join("\n")) + "</textarea></div>" +
       '<div class="field full"><label>URL 匹配正则（一行一个；以 ^ 开头或含 :// 时匹配整条 URL）</label><textarea class="ta" rows="2" id="o-regexes">' + esc((rule.url_regexes || []).join("\n")) + "</textarea></div>" +
       "</div>" +
@@ -1422,6 +1483,10 @@
       "</footer></div></div>";
     renderOvRows();
     renderOvPreview();
+    ovSelectedSites = (rule.site_ids || []).slice();
+    if (!allSites.length) loadSites();
+    renderOvSites(ovSelectedSites);
+    $("#o-identify").onclick = function () { doOverlayIdentify(); };
     $("#o-cancel").onclick = function () { $("#modal-root").innerHTML = ""; };
     $("#o-rows").addEventListener("input", function () { regions = collectOvRegions(); renderOvPreview(); });
     $("#o-rows").addEventListener("click", function (e) {
@@ -1443,6 +1508,8 @@
         sort: parseInt($("#o-sort").value, 10) || 0,
         url_prefixes: lines($("#o-prefixes").value),
         url_regexes: lines($("#o-regexes").value),
+        site_ids: collectOvSites(),
+        source_url: ($("#o-link").value || "").trim(),
         regions: collectOvRegions(),
         remark: $("#o-remark").value.trim()
       };
@@ -1493,6 +1560,79 @@
         ";width:" + ovPct(r.w) + ";height:" + ovPct(r.h) + ";background:" + bg + '">' +
         "<em>" + esc(r.label || "") + "</em></div>";
     }).join("");
+  }
+  // 资源站绑定：多选勾选（绑定后调用该资源站即自动套用遮罩）
+  function renderOvSites(selected) {
+    selected = selected || [];
+    var box = $("#o-sites"); if (!box) return;
+    if (!allSites.length) { box.innerHTML = '<span class="empty">暂无资源站（可到「资源站」页添加）</span>'; return; }
+    box.innerHTML = allSites.map(function (s) {
+      var on = selected.indexOf(s.id) >= 0 || selected.indexOf(s.name) >= 0;
+      return '<label class="' + (s.ads ? "ads" : "") + '"><input type="checkbox" class="ov-site" value="' + esc(s.id) + '"' + (on ? " checked" : "") + '>' +
+        esc(s.name) + (s.ads ? "（广告站）" : "") + "</label>";
+    }).join("");
+  }
+  function collectOvSites() {
+    return $$("#o-sites .ov-site").filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+  }
+  // 候选遮罩区域：点击即加入下方区域列表，并可继续微调
+  function renderOvCandidates(list) {
+    var box = $("#o-cand"); if (!box) return;
+    if (!list || !list.length) { box.innerHTML = ""; return; }
+    box.innerHTML = list.map(function (r, i) {
+      var size = Math.round((r.w || 0) * 100) + "×" + Math.round((r.h || 0) * 100) + "%";
+      return '<button type="button" class="ov-chip" data-ci="' + i + '">＋ ' + esc(r.label || ("区域" + (i + 1))) + " <small>" + size + "</small></button>";
+    }).join("");
+    box.querySelectorAll(".ov-chip").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var r = list[parseInt(b.dataset.ci, 10)];
+        if (!r) return;
+        regions = collectOvRegions();
+        regions.push(Object.assign({}, r));
+        renderOvRows(); renderOvPreview();
+        b.classList.add("on");
+        toast("已添加候选区域，可在下方微调");
+      });
+    });
+  }
+  // 自动识别：链接 → 匹配域名 + 推荐绑定资源站 + 候选遮罩区域
+  function doOverlayIdentify() {
+    var link = ($("#o-link").value || "").trim();
+    if (!link) { toast("请先粘贴链接"); return; }
+    var info = $("#o-ai-info");
+    info.innerHTML = "识别中…（若需抓帧识别，约需数秒）";
+    $("#o-cand").innerHTML = "";
+    api("/api/admin/adfilter/overlay/identify", { method: "POST", body: { url: link } }).then(function (r) {
+      if (r.code !== 200) { info.innerHTML = esc(r.msg || "识别失败"); return; }
+      var d = r.data || {};
+      // ① 自动填入匹配域名前缀
+      if (d.prefixes && d.prefixes.length) {
+        var cur = lines($("#o-prefixes").value);
+        d.prefixes.forEach(function (p) { if (p && cur.indexOf(p) < 0) cur.push(p); });
+        $("#o-prefixes").value = cur.join("\n");
+      }
+      // ② 自动勾选命中的资源站
+      if (d.site_id || d.site_name) {
+        var sel = collectOvSites();
+        allSites.forEach(function (s) {
+          if ((d.site_id && s.id === d.site_id) || (d.site_name && s.name === d.site_name)) {
+            if (sel.indexOf(s.id) < 0) sel.push(s.id);
+          }
+        });
+        ovSelectedSites = sel;
+        renderOvSites(sel);
+      }
+      // ③ 候选遮罩区域
+      renderOvCandidates(d.regions || []);
+      var kindMap = { page: "页面", m3u8: "M3U8", image: "图片", unknown: "未知" };
+      var parts = ["<b>域名</b> " + esc(d.host || "-"), "<b>类型</b> " + esc(kindMap[d.kind] || d.kind || "-")];
+      if (d.site_name) parts.push("<b>资源站</b> " + esc(d.site_name));
+      if (d.reuse_rule_id) parts.push("<b>已有规则</b> " + esc(d.reuse_rule_id) + "（可直接编辑复用）");
+      var html = parts.join(" · ");
+      if (d.note) html += "<div>" + esc(d.note) + "</div>";
+      info.innerHTML = html;
+      toast("识别完成");
+    }).catch(function (e) { info.innerHTML = "识别失败：" + esc(e.message || "网络错误"); });
   }
   $("#btn-refresh-overlay").onclick = loadOverlayRules;
   $("#btn-add-overlay").onclick = function () { openOverlayRuleModal("add", {}); };
