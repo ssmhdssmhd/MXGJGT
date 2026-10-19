@@ -23,8 +23,9 @@ var (
 	appConfig   *model.AppConfig
 	sites       []model.ResourceSite
 	mappings    []model.SiteMapping
-	cleanPaths  []model.CleanPath
-	filterSites []model.FilterSite
+	cleanPaths   []model.CleanPath
+	filterSites  []model.FilterSite
+	overlayRules []model.AdOverlayRule
 
 	dataDir  string
 	cacheDir string
@@ -79,6 +80,13 @@ func GetFilterSites() []model.FilterSite {
 	return filterSites
 }
 
+// GetOverlayRules 获取画面遮罩（内嵌广告）规则
+func GetOverlayRules() []model.AdOverlayRule {
+	mu.RLock()
+	defer mu.RUnlock()
+	return overlayRules
+}
+
 // ===== 首次启动写模板（仅当文件不存在时） =====
 
 func EnsureDefaults() {
@@ -87,6 +95,7 @@ func EnsureDefaults() {
 	ensureFile(filepath.Join(dataDir, "mappings.yaml"), defaultMappingsYAML())
 	ensureFile(filepath.Join(dataDir, "cleanpaths.yaml"), defaultCleanPathsYAML())
 	ensureFile(filepath.Join(dataDir, "filter_sites.yaml"), defaultFilterSitesYAML())
+	ensureFile(filepath.Join(dataDir, "ad_overlay.yaml"), defaultOverlayRulesYAML())
 }
 
 func ensureFile(path, content string) {
@@ -158,6 +167,16 @@ func LoadConfig(dir string) error {
 		if yaml.Unmarshal(data, &fs) == nil {
 			normalizeFilterSites(fs)
 			filterSites = fs
+		}
+	}
+
+	// ad_overlay.yaml —— 画面遮罩（内嵌广告）规则
+	overlayFile := filepath.Join(dir, "ad_overlay.yaml")
+	if data, err := os.ReadFile(overlayFile); err == nil {
+		var rs []model.AdOverlayRule
+		if yaml.Unmarshal(data, &rs) == nil {
+			normalizeOverlayRules(rs)
+			overlayRules = rs
 		}
 	}
 
@@ -233,6 +252,52 @@ func normalizeFilterSites(fs []model.FilterSite) {
 	}
 }
 
+// normalizeOverlayRules 补齐画面遮罩规则的默认值并生成缺失的 ID / 区域默认样式
+func normalizeOverlayRules(rs []model.AdOverlayRule) {
+	for i := range rs {
+		if rs[i].ID == "" {
+			rs[i].ID = randomID()
+		}
+		for j := range rs[i].Regions {
+			r := &rs[i].Regions[j]
+			if r.Mode == "" {
+				r.Mode = "cover"
+			}
+			if r.Color == "" {
+				r.Color = "#000000"
+			}
+			if r.Opacity <= 0 {
+				r.Opacity = 1
+			}
+		}
+	}
+}
+
+// matchURLRules 按前缀 / 正则匹配 URL：
+// 前缀匹配主机名；正则默认也匹配主机名，以 ^ 开头或含 :// 时匹配整条 URL
+func matchURLRules(u, host string, prefixes, regexes []string) bool {
+	for _, p := range prefixes {
+		p = strings.TrimSpace(p)
+		if p != "" && host != "" && strings.HasPrefix(host, p) {
+			return true
+		}
+	}
+	for _, re := range regexes {
+		re = strings.TrimSpace(re)
+		if re == "" {
+			continue
+		}
+		target := host
+		if strings.HasPrefix(re, "^") || strings.Contains(re, "://") {
+			target = u
+		}
+		if ok, err := regexp.MatchString(re, target); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
 // PrimaryCleanPath 返回对外展示/生成 qcb 时使用的主调用路径
 // 优先默认 /api/clean（若已启用），否则取第一条启用路径
 func PrimaryCleanPath() string {
@@ -269,49 +334,45 @@ func IsCleanPath(p string) bool {
 
 // MatchFilterSite 按 URL 前缀 / 正则匹配广告过滤站点规则
 func MatchFilterSite(u string) *model.FilterSite {
-	host := ""
-	if pu, err := url.Parse(u); err == nil {
-		host = pu.Hostname()
-	}
+	host := hostOf(u)
 	mu.RLock()
 	defer mu.RUnlock()
-	var best *model.FilterSite
 	for i := range filterSites {
 		s := &filterSites[i]
 		if !s.Enabled {
 			continue
 		}
-		hit := false
-		for _, p := range s.URLPrefixes {
-			p = strings.TrimSpace(p)
-			if p != "" && host != "" && strings.HasPrefix(host, p) {
-				hit = true
-				break
-			}
-		}
-		if !hit {
-			for _, re := range s.URLRegexes {
-				re = strings.TrimSpace(re)
-				if re == "" {
-					continue
-				}
-				// 默认只对主机名匹配；正则以 ^ 开头或含 :// 时对整条 URL 匹配
-				target := host
-				if strings.HasPrefix(re, "^") || strings.Contains(re, "://") {
-					target = u
-				}
-				if ok, err := regexp.MatchString(re, target); err == nil && ok {
-					hit = true
-					break
-				}
-			}
-		}
-		if hit {
-			best = s
-			break
+		if matchURLRules(u, host, s.URLPrefixes, s.URLRegexes) {
+			return s
 		}
 	}
-	return best
+	return nil
+}
+
+// MatchOverlayRule 按 URL 前缀 / 正则匹配画面遮罩规则（未命中返回 nil）
+// 命中后可把规则里的 regions 下发播放器，用于遮挡烧进画面的广告文字 / 台标 / 二维码
+func MatchOverlayRule(u string) *model.AdOverlayRule {
+	host := hostOf(u)
+	mu.RLock()
+	defer mu.RUnlock()
+	for i := range overlayRules {
+		s := &overlayRules[i]
+		if !s.Enabled || len(s.Regions) == 0 {
+			continue
+		}
+		if matchURLRules(u, host, s.URLPrefixes, s.URLRegexes) {
+			return s
+		}
+	}
+	return nil
+}
+
+// hostOf 取 URL 主机名（解析失败返回空串）
+func hostOf(u string) string {
+	if pu, err := url.Parse(u); err == nil {
+		return pu.Hostname()
+	}
+	return ""
 }
 
 // Reload 重新从磁盘加载
@@ -365,6 +426,19 @@ func SaveFilterSites(fs []model.FilterSite) error {
 	filterSites = fs
 	mu.Unlock()
 	return os.WriteFile(filepath.Join(dataDir, "filter_sites.yaml"), data, 0644)
+}
+
+// SaveOverlayRules 保存画面遮罩（内嵌广告）规则
+func SaveOverlayRules(rs []model.AdOverlayRule) error {
+	normalizeOverlayRules(rs)
+	data, err := yaml.Marshal(rs)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	overlayRules = rs
+	mu.Unlock()
+	return os.WriteFile(filepath.Join(dataDir, "ad_overlay.yaml"), data, 0644)
 }
 
 // ===== 默认值 =====
@@ -568,5 +642,43 @@ func defaultFilterSitesYAML() string {
   fingerprint: ""
   regex_list: []
   remark: "示例规则：按主机名前缀匹配吉吉资源播放域名"
+`
+}
+
+// defaultOverlayRulesYAML 画面遮罩（内嵌广告 / 贴片）规则
+func defaultOverlayRulesYAML() string {
+	return `# =============================================
+#  画面遮罩（内嵌广告 / 贴片）规则
+#  解决「广告文字 / 台标 / 二维码烧进画面像素」的问题：
+#  播放器按本规则在对应位置叠加遮罩（零转码、零带宽、秒级生效），
+#  与 M3U8 去插播互补，二者可同时启用。
+#
+#  regions 区域使用「相对比例 0~1」，播放器按实际视频尺寸等比换算，
+#  跨分辨率、跨剧集通用；例：左上角台标 → x=0.02 y=0.03 w=0.16 h=0.10
+#
+#  mode:    cover=纯色遮挡（默认）/ blur=模糊
+#  color:   cover 填充色（默认 #000000）
+#  opacity: 不透明度 0~1（默认 1）
+#
+#  url_prefixes: 按播放域名主机名前缀匹配（任一命中即命中该规则）
+#  url_regexes:  默认匹配主机名；以 ^ 开头或含 :// 时匹配整条 URL
+# =============================================
+
+- id: "demo"
+  name: "示例：左上角台标遮挡"
+  enabled: false
+  sort: 0
+  url_prefixes: ["svip.jijiplay"]
+  url_regexes: []
+  regions:
+    - x: 0.02
+      y: 0.03
+      w: 0.16
+      h: 0.10
+      mode: cover
+      color: "#000000"
+      opacity: 1
+      label: "左上角台标"
+  remark: "示例规则（默认停用）：启用后播放器将在相对坐标区域叠加遮罩"
 `
 }
