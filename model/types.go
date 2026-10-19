@@ -9,6 +9,7 @@ type Response struct {
 	JJ   string `json:"jj,omitempty"`  // 剧集集数
 	URL  string `json:"url,omitempty"` // 替换后的播放地址
 	QCB  string `json:"qcb,omitempty"` // 去插播（M3U8 广告过滤）后的播放地址
+	Ad   *AdOverlayClean `json:"ad,omitempty"` // 画面遮罩（内嵌广告）规则，播放器据此叠加遮罩
 	Msg  string `json:"msg,omitempty"` // 同 url（或错误消息）
 	Time string `json:"time,omitempty"` // 响应时间
 	KFZ  string `json:"kfz,omitempty"`  // 开发商/制作方

@@ -54,8 +54,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          [ -z "$VERSION" ] && VERSION="${{ github.event.inputs.tag }}"
+          REF="${GITHUB_REF_NAME}"
+          if [[ "$REF" == v* ]]; then
+            VERSION="${REF#v}"
+          else
+            VERSION="${{ github.event.inputs.tag }}"
+            VERSION="${VERSION#v}"
+          fi
           [ -z "$VERSION" ] && VERSION="dev"
           BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -86,6 +91,27 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: 解析发布元信息（tag / 是否先行版）
+        id: meta
+        run: |
+          REF="${{ github.ref_name }}"
+          TAG="$REF"
+          # 手动触发时以输入版本号为准（避免用分支名当 tag）
+          if [[ "$REF" != v* ]]; then
+            IN="${{ github.event.inputs.tag }}"
+            [ -n "$IN" ] && TAG="v${IN#v}"
+          fi
+          # 版本号含 '-' 后缀（如 v0.0.17-dev.1）= 先行版，标记为 prerelease
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true"  >> $GITHUB_OUTPUT
+            echo "make_latest=false" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "make_latest=true"  >> $GITHUB_OUTPUT
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "==> tag=$TAG prerelease=$([[ "$TAG" == *-* ]] && echo true || echo false)"
+
       - name: 下载所有 artifact
         uses: actions/download-artifact@v4
         with:
@@ -107,10 +133,12 @@ jobs:
       - name: 创建 Release 并上传
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: MXGJGT ${{ github.ref_name }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: MXGJGT ${{ steps.meta.outputs.tag }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          make_latest: ${{ steps.meta.outputs.make_latest }}
           body: |
-            ## MXGJGT ${{ github.ref_name }}
+            ## MXGJGT ${{ steps.meta.outputs.tag }}
 
             | 平台 | 架构 | 下载 |
             |------|------|------|

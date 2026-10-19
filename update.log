@@ -1,3 +1,155 @@
+MXGJGT v0.0.17-dev.1 202610192039
+================================
+
+## 后台「系统 · 更新」新增双更新渠道（正式版 / 先行版）
+
+> 需求：后台更新增加先行版，可在后台切换更新**正式版（main）**与**先行版**；删除多余开发分支，仅保留 `main`（稳定版，无改动）与一个先行版分支（`dev`），当前分支作为先行版用于测试与开发。
+
+### ✨ 新增
+
+**1. 双更新渠道 stable / prerelease**
+
+- 新增渠道常量：`stable`=正式版（跟随 main 正式发布）/ `prerelease`=先行版（跟随开发分支 dev 预发布）
+- 后台「系统 · 更新」新增「更新渠道」下拉 +「切换渠道」按钮，切换后即时保存并自动重新检查远程版本
+- 配置持久化到 `data/updater.yaml`（首次启动自动写默认模板 `channel: stable`；缺省/非法值一律回退 `stable`）
+
+**2. 渠道感知的 Release 拉取**
+
+- 正式版（stable）：走 GitHub `/releases/latest`，**GitHub 会自动排除预发布**，稳定可靠
+- 先行版（prerelease）：走 `/releases?per_page=20` 取**首条非草稿**发布（含预发布），用于抢先体验 / 测试
+
+**3. 版本比较支持预发布后缀**
+
+- `compareVersion` 扩展为「数字主干 + 预发布后缀」：先比主干（如 `0.0.17`），主干相同再比后缀
+- **同主干时：无后缀（正式版）> 有后缀（先行版）**；后缀按段比较（数字段按数值，其余按字典序），如 `-dev.2 > -dev.1`
+- 避免「先行版数字更大却因后缀被误判」「正式版与先行版相等」等误报
+
+**4. 接口**
+
+```
+GET  /api/version                 → 返回新增 channel 字段（当前渠道）
+GET  /api/admin/update/check      → 返回新增 channel 字段
+POST /api/admin/update/channel    → 切换渠道（body: {"channel":"stable"|"prerelease"}），写回 updater.yaml
+```
+
+**5. 云端编译标记先行版**
+
+- `.github/workflows/release.yml`：tag 含 `-` 后缀（如 `v0.0.17-dev.1`）自动标记为 **pre-release** 且 `make_latest=false`，故正式版渠道不会拉到先行版
+- 手动触发工作流时以输入版本号作为 tag（修复原先误用分支名当 tag 的问题）
+
+**6. 分支整理**
+
+- 仅保留 `main`（稳定版，代码未改动）与 `dev`（先行版，用于测试/开发）
+- 删除早期分叉分支 `feature/adfilter` / `feature/cover-id-dict` / `trae/agent-*`；当前分支已重命名并作为先行版分支
+
+**7. 版本号**
+
+- `model/version.go` / `Makefile`：`0.0.16 → 0.0.17-dev.1`（先行版带 `-dev.N` 预发布后缀，合并回 main 正式发布时去掉后缀）
+
+### 📁 变更文件
+
+```
+modified: config/config.go      # 渠道常量 / 全局变量 / Get·Save·normalize / updater.yaml 模板与加载
+modified: service/updater.go    # 渠道感知拉取（/releases/latest 与 /releases 首条）+ 预发布后缀版本比较 + channelLabel
+modified: handler/api.go        # 注册 POST /api/admin/update/channel；/api/version 返回 channel
+modified: handler/admin.go      # 新增 handleAdminUpdateChannel
+modified: handler/mxadmin.html  # 「系统 · 更新」渠道下拉 + 切换按钮 + 渠道显示
+modified: .github/workflows/release.yml  # 含 - 后缀的 tag → pre-release；手动触发 tag 修正
+modified: model/version.go      # 0.0.16 → 0.0.17-dev.1
+modified: Makefile              # VERSION 0.0.17-dev.1
+modified: README.md             # 双渠道 / updater.yaml / 接口 / 云端编译说明
+```
+
+### 📋 实测
+
+```
+go build ./...                          → 通过，无报错 ✅
+go vet ./...                            → 通过 ✅
+GET  /api/version                        → 含 channel=stable（默认）✅
+POST /api/admin/update/channel(stable)   → 保存成功 ✅
+POST /api/admin/update/channel(prerelease)→ 切换为先行版 + 远端拉取列表首条 ✅
+POST /api/admin/update/channel(非法值)    → 回退 stable（normalize）✅
+data/updater.yaml                        → channel 正确持久化 ✅
+后台「系统 · 更新」                        → 渠道下拉回显 + 切换后自动复查远程版本 ✅
+```
+
+---
+
+MXGJGT v0.0.16 202610191949
+============================
+
+## 后台新增一级菜单「广告过滤」+ 画面遮罩（去内嵌广告）
+
+> 需求：有些广告文字 / 台标 / 二维码是**压缩内嵌**在视频画面里的（烧进像素），无法靠剔除 m3u8 片段解决。本次把后台侧边栏的「M3U8 广告过滤」升级为一级菜单「**广告过滤**」，内部用子页签统管两类去广告——**去插播（M3U8）** 与 **画面遮罩（内嵌广告）**，并落地第一种**零转码**方案：遮罩贴片。
+
+### ✨ 新增
+
+**1. 侧边栏一级菜单「广告过滤」**
+
+- 原「🚫 M3U8 广告过滤」升级为一级菜单「🚫 **广告过滤**」，内部以子页签切换两个子页：
+  - **去插播（M3U8）**：沿用原有站点规则 CRUD + 探测 / 测试 / 调用日志（能力不变）
+  - **画面遮罩（内嵌广告）**：新增遮罩区域规则 CRUD
+
+**2. 画面遮罩（内嵌广告）规则**
+
+- 规则模型 `AdOverlayRule`：名称 / 启用 / 排序 / URL 匹配前缀与正则 / 遮罩区域列表 / 备注
+- 遮罩区域 `AdOverlayRegion` 全部使用**相对坐标 0~1**（`x`/`y`=左上角、`w`/`h`=宽高），播放器按视频实际尺寸等比换算，**跨分辨率、跨剧集通用**（无需为每个清晰度单独配置）
+- 区域样式：`mode` 支持 `cover(纯色遮挡)` / `blur(模糊)`，可设颜色 / 透明度 / 备注
+- 命中播放域名后，服务端在 `/api/clean` 与 `/api/search/` 的 JSON 以 **`ad` 字段**下发（`rule_id` / `rule_name` / `regions[]`），播放器按 `regions` 叠加遮罩即完成去内嵌广告
+- **零转码、零带宽、秒级生效**：不改动源站地址，亦不做像素级转码，源站 CDN 与带宽保持不变
+
+**3. 后台画面遮罩编辑器（含 16:9 实时预览）**
+
+- 弹窗内可增删遮罩区域行：`x` / `y` / `w` / `h`（相对比例）、模式（纯色遮挡 / 模糊）、颜色选择器、透明度、备注
+- 内置 **16:9 实时预览画布**，编辑即预览、所见即所得
+- 列表支持 启用 / 停用 / 编辑 / 删除
+
+**4. 配置持久化**
+
+- 新增 `data/ad_overlay.yaml` 存储画面遮罩规则（沿用 `filter_sites.yaml` 的加载 / 规范化 / 持久化模式，修改后 `/api/admin/reload` 热加载）
+- 坐标写入前自动裁剪到 `0~1`；宽或高为 0 的无效区域自动丢弃
+
+### 🔌 新增接口
+
+```
+GET    /api/admin/adfilter/overlays        列出画面遮罩规则
+POST   /api/admin/adfilter/overlay         新增画面遮罩规则
+PUT    /api/admin/adfilter/overlay/:id     更新画面遮罩规则（id 支持 ID 或名称）
+DELETE /api/admin/adfilter/overlay/:id     删除画面遮罩规则
+```
+
+### 📁 变更文件
+
+```
+new:      model/adfilter.go     # 画面遮罩数据结构（AdOverlayRegion / AdOverlayRule / AdOverlayClean / 请求体）
+new:      handler/adfilter.go   # 画面遮罩后台 API（CRUD + resolveAdOverlay + 区域规范化）
+modified: config/config.go      # 画面遮罩规则加载 / 规范化 / 持久化 / 匹配 + ad_overlay.yaml 模板
+modified: handler/api.go        # 注册 /api/admin/adfilter/* 路由；clean/search 响应下发 ad 字段
+modified: handler/filter.go     # newFilterID 更名 newRuleID（两类规则共用）
+modified: handler/mxadmin.html  # 一级菜单「广告过滤」+ 子页签 + 画面遮罩管理（区域编辑 + 16:9 实时预览）
+modified: model/types.go        # Response 新增 Ad *AdOverlayClean（json: ad,omitempty）
+modified: model/version.go      # 0.0.15 → 0.0.16
+modified: Makefile              # VERSION 0.0.16
+modified: README.md             # 广告过滤菜单 / 画面遮罩 / ad 字段 / adfilter 接口 / 项目结构
+```
+
+### 📋 实测
+
+```
+go build ./...                                         → 通过，无报错 ✅
+go vet ./...                                            → 通过 ✅
+GET  /api/version                                        → 0.0.16 ✅
+POST /mx/api/login（admin/mxgjgt）                        → 登录成功 ✅
+GET  /api/admin/adfilter/overlays                        → 返回规则列表（含默认示例） ✅
+POST /api/admin/adfilter/overlay（前缀 svip.jijiplay）    → 新增成功 ✅
+PUT  /api/admin/adfilter/overlay/:id                     → 更新成功 ✅
+GET  /api/clean/?wd=狂飙&episode=第5集                   → JSON 含 qcb + ad（regions 正确下发） ✅
+data/ad_overlay.yaml                                     → 规则正确持久化 ✅
+DELETE /api/admin/adfilter/overlay/:id                   → 删除成功 ✅
+```
+
+---
+
 MXGJGT v0.0.15 202610190742
 ============================
 

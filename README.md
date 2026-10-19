@@ -1,7 +1,7 @@
 # MXGJGT
 
 > **MXGJGT** 是一个基于 Go + Gin 开发的视频链接清洗 / 伪装后端服务。
-> 访问域名返回伪装 404 页面（默认 nginx 风格 `404 Not Found`），只有命中配置的调用路径（默认 `/api/clean/`）才会进入真实 API。输入腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / B站 等官方链接，自动解析影视名 + 集数（**官替**），并从配置的资源站中匹配、输出**替换后的播放地址**；解析失败时可传 `wd` / `episode` 直接指定剧名与集数。另提供 **M3U8 广告过滤（去插播）**：按站点规则剔除 m3u8 里的插播广告片段，输出仍指向源站 CDN 的干净索引。后台 `/mx/` 登录后可可视化管理资源站、平台映射、广告过滤规则、调用路径与在线更新。
+> 访问域名返回伪装 404 页面（默认 nginx 风格 `404 Not Found`），只有命中配置的调用路径（默认 `/api/clean/`）才会进入真实 API。输入腾讯视频 / 爱奇艺 / 优酷 / 芒果TV / 搜狐视频 / 乐视视频 / B站 等官方链接，自动解析影视名 + 集数（**官替**），并从配置的资源站中匹配、输出**替换后的播放地址**；解析失败时可传 `wd` / `episode` 直接指定剧名与集数。另提供 **广告过滤**：①**去插播**——按站点规则剔除 m3u8 里的插播广告片段，输出仍指向源站 CDN 的干净索引；②**画面遮罩**——针对烧进画面像素的广告文字 / 台标 / 二维码，在 JSON 里以 `ad` 字段下发遮罩区域，播放器叠加遮罩即完成去内嵌广告。后台 `/mx/` 登录后可可视化管理资源站、平台映射、广告过滤规则、调用路径与在线更新。
 
 ---
 
@@ -15,6 +15,8 @@
 | 🖥️ 官替（官方资源替换） | 官方链接 → 解析剧名+集数 → 资源站匹配 → 输出替换播放地址 |
 | 🚫 M3U8 广告过滤（去插播） | 按站点规则剔除 m3u8 插播广告片段，输出仍指向源站 CDN（零代理、零转发） |
 | 🔗 `qcb` 字段 | JSON 返回新增 `qcb`（去插播后的播放地址），播放器直接用即走去插播 |
+| 🖼️ 画面遮罩（去内嵌广告） | 针对烧进画面像素的广告文字 / 台标 / 二维码：命中播放域名后，JSON 返回 `ad` 字段下发遮罩区域，播放器按相对坐标叠加遮罩（零转码、零带宽、秒级生效） |
+| 🔗 `ad` 字段 | JSON 返回新增 `ad`（画面遮罩规则：`rule_id` / `rule_name` / `regions`），播放器据 `regions` 叠加遮罩 |
 | 🧭 资源站分类 | 资源站列表拆分为「纯净资源站（无广告，直返原地址）」与「广告资源站（走去插播 qcb 后返回干净地址）」，一键互移 |
 | 🤖 播放链接自动分析 | 新增过滤规则时粘贴资源站播放链接，自动解析 m3u8 + 探测广告并一键填表（支持播放页 / m3u8 直链） |
 | 🛣️ 自定义调用路径 | 「系统设置 · 路径设置」可自定义 `/api/clean/` 调用路径，支持多路径 |
@@ -22,6 +24,7 @@
 | 🖥️ 网页后台 | 域名 `/mx/` 登录进入侧边栏仪表盘后台，可视化管理资源站 / 平台映射 / 广告过滤 / 调用路径 / 在线更新，支持全局搜索 |
 | 🎞️ 内嵌播放 | 后台资源详情可直接内嵌播放（播放页解析为直链 m3u8，hls.js 播放），无需跳转新窗口 |
 | 🔖 版本检查 | 后台「系统 / 更新」显示 当前版本 + 远程最新版本，支持手动检查更新 |
+| 🧭 双更新渠道 | 后台可切换 **正式版（stable · 跟随 main 正式发布）** / **先行版（prerelease · 跟随开发分支预发布）**，渠道持久化到 `data/updater.yaml` |
 | 🛠️ 自动更新 | 查 GitHub Releases → 下载对应平台二进制 → 原子替换 → 自重启 |
 | ⚙️ 配置化 | YAML 配置文件，资源站列表独立配置 |
 | 🔐 API Key | 手动更新接口可选密钥保护；后台管理接口需登录 |
@@ -133,7 +136,7 @@ curl http://127.0.0.1:9991/api/version
 | 🏠 首页 | 概览统计卡片（资源站数 / 已启用 / 平台映射数 / 当前版本）+ 快捷入口 |
 | 📡 资源站管理 | 纯净资源站 / 广告资源站 两个列表，增删改查 |
 | 🔗 平台映射 | 官方平台 → 优先资源站 |
-| 🚫 M3U8 广告过滤 | 站点规则（增删改）+ 探测 / 测试 / 调用日志 |
+| 🚫 广告过滤 | 一级菜单，子页签统管两类去广告：**去插播（M3U8）** 与 **画面遮罩（内嵌广告）**（站点/区域规则 CRUD + 探测 / 测试 / 调用日志 / 16:9 实时预览） |
 | 🛣️ 系统设置 | 路径设置：自定义 `/api/clean/` 调用路径 |
 | ⚙️ 系统 · 更新 | 版本 / 构建时间 / 更新仓库 / 定时更新状态 |
 
@@ -148,9 +151,10 @@ curl http://127.0.0.1:9991/api/version
 | 🎬 详情 / 内嵌播放 | 在搜索结果点「详情」查看剧集列表；点「内嵌播放」直接在本页播放（播放页自动解析为直链 m3u8，hls.js 播放，失败自动降级「新窗口」），亦可「新窗口」跳转或「复制」地址 |
 | 🔄 同步 | 重新拉取该资源站分类列表并写回 `cid`（不改动搜索地址 / 详情地址） |
 | 🔗 平台映射 | 勾选每个官方平台优先使用的资源站 |
-| 🚫 M3U8 广告过滤 | 站点规则 CRUD（解析方式 / 检测方式 / 索引模式 / 码率 / 匹配前缀与正则 / 时长指纹 / 片段级正则）；**新增规则支持「播放链接自动分析填入」**：粘贴资源站播放链接 → 自动解析 m3u8 + 探测广告 → 一键填表；所有下拉项以「英文(中文)」标注，如 `auto(自动（推荐）)`；「探测」给出广告区间与指纹建议、「测试」返回保留/剔除与过滤后播放列表、「调用日志」查看最近 200 次去插播调用 |
+| 🚫 广告过滤 · 去插播（M3U8） | 站点规则 CRUD（解析方式 / 检测方式 / 索引模式 / 码率 / 匹配前缀与正则 / 时长指纹 / 片段级正则）；**新增规则支持「播放链接自动分析填入」**：粘贴资源站播放链接 → 自动解析 m3u8 + 探测广告 → 一键填表；所有下拉项以「英文(中文)」标注，如 `auto(自动（推荐）)`；「探测」给出广告区间与指纹建议、「测试」返回保留/剔除与过滤后播放列表、「调用日志」查看最近 200 次去插播调用 |
+| 🖼️ 广告过滤 · 画面遮罩（内嵌广告） | 画面遮罩规则 CRUD（名称 / 启用 / 排序 / 匹配前缀与正则 / 备注）；每条规则含一至多个**遮罩区域**（`x`/`y`=左上角、`w`/`h`=宽高，均为相对比例 `0~1`，跨分辨率跨剧通用；模式 `cover(纯色遮挡)` / `blur(模糊)`、颜色、透明度、备注），弹窗内置 **16:9 实时预览**，所见即所得；命中播放域名后在 `/api/clean` 响应里以 `ad` 字段下发，播放器按相对坐标叠加遮罩（零转码、零带宽、秒级生效） |
 | 🛣️ 系统设置 · 路径设置 | 增删多条调用路径（`http://` / `https://`），任一启用路径命中即生效；全部停用时回退默认 `/api/clean` |
-| ⚙️ 系统 / 更新 | 查看 当前版本 / 远程最新版本 / 构建时间 / 更新仓库 / 定时更新状态；「检查更新」只查不更、「立即更新」下载替换并自重启（仅在远程版本更高时执行） |
+| ⚙️ 系统 / 更新 | 查看 当前版本 / 远程最新版本 / 更新渠道 / 构建时间 / 更新仓库 / 定时更新状态；**「更新渠道」下拉可切换正式版 / 先行版并保存**；「检查更新」只查不更、「立即更新」下载替换并自重启（仅在远程版本更高时执行） |
 
 - 登录态由 Cookie 会话维持，有效期 `admin.session_hours` 小时
 - `/api/admin/*` 全部要求登录后访问，未登录返回 `401`
@@ -187,6 +191,11 @@ curl http://127.0.0.1:9991/api/version
   "jj":   "第5集",
   "url":  "https://svip.jijiplay1.com/watch/xxxx",
   "qcb":  "https://<域名>/api/clean/?type=m3u8&url=https%3A%2F%2Fsvip.jijiplay1.com%2Fwatch%2Fxxxx",
+  "ad":   {
+            "rule_id":   "jijiplay-hud",
+            "rule_name": "吉吉资源-去内嵌广告",
+            "regions": [ { "x": 0.05, "y": 0.02, "w": 0.3, "h": 0.1, "mode": "cover", "color": "#000000", "opacity": 1, "label": "左上角台标" } ]
+          },
   "msg":  "https://svip.jijiplay1.com/watch/xxxx",
   "time": "2026-10-18 12:00:00",
   "kfz":  "射手沫蝴蝶"
@@ -200,10 +209,13 @@ curl http://127.0.0.1:9991/api/version
 | `jj` | 集数 |
 | `url` / `msg` | 替换后的播放地址 |
 | `qcb` | **去插播后的播放地址**：`<主调用路径>/?type=m3u8&url=<播放地址>`，播放器直接用即自动剔除插播广告 |
+| `ad` | **画面遮罩（去内嵌广告）规则**（可选，仅命中规则时出现）：`rule_id` / `rule_name` / `regions[]`；播放器按每个 region 的相对坐标叠加遮罩（`cover` 纯色遮挡 / `blur` 模糊），即完成去内嵌广告 |
 | `time` | 响应时间 |
 | `kfz` | 制作方（射手沫蝴蝶） |
 
 > `url` 指向 m3u8 / 带 `type=m3u8` 时，同一调用路径**切换为「去插播」模式**：拉取索引 → 剔除广告片段 → 直接返回过滤后的 m3u8 文本（仍指向源站 CDN）。过滤失败自动 `302` 回源。
+
+> `ad` 仅在该播放地址命中**画面遮罩规则**时出现；`regions` 坐标为相对比例 `0~1`，播放器按实际视频画面尺寸换算像素位置，故同一规则跨分辨率、跨剧集通用，无需为各清晰度单独配置。播放器侧只需按 `regions` 叠加遮罩层即可，源站地址与带宽不变。
 
 **失败响应（伪装）：**
 
@@ -222,17 +234,19 @@ curl http://127.0.0.1:9991/api/version
 | `wd` | 是 | 剧名 |
 | `episode` | 否 | 集数，如 `第5集` / `05` |
 
-响应格式同 `/api/clean/`（成功返回 `jm` / `jj` / `url`）。
+响应格式同 `/api/clean/`（成功返回 `jm` / `jj` / `url` / `qcb` / `ad`）。
 
 ### `GET /api/version`
 
-返回当前版本、构建信息、更新配置。
+返回当前版本、构建信息、更新配置，以及当前更新渠道 `channel`（`stable` / `prerelease`）。
 
 ### `POST /api/update`
 
 手动触发更新：拉取 GitHub Releases 最新版本 → 下载对应平台二进制 → 原子替换 → 自重启。
 
 已登录网页后台时免鉴权；否则需在 `security.api_key` 设值后携带 `X-API-Key` 或 `?key=`。
+
+> 拉取哪个版本由**更新渠道**决定：正式版（`stable`）走 `/releases/latest`（GitHub 自动排除预发布）；先行版（`prerelease`）走 `/releases` 列表首条非草稿（含预发布）。渠道可在后台「系统 · 更新」切换，或直接改 `data/updater.yaml`。
 
 ### 后台管理 `/api/admin/*`
 
@@ -246,7 +260,8 @@ curl http://127.0.0.1:9991/api/version
 | GET | `/api/admin/site/search?id=&wd=` | 在指定资源站内搜索关键词，返回结果列表 |
 | GET | `/api/admin/site/detail?id=&rid=` | 获取指定资源详情与剧集播放列表（后台详情 / 内嵌播放用） |
 | GET | `/api/admin/stream?page=` | 解析采集站播放页 → 直链 m3u8（供后台内嵌播放，hls.js 直连） |
-| GET | `/api/admin/update/check` | 只读检查远程最新版本：返回 `current / latest / has_update / release / published / repo / enabled / error` |
+| GET | `/api/admin/update/check` | 只读检查远程最新版本：返回 `current / channel / latest / has_update / release / published / repo / enabled / error` |
+| POST | `/api/admin/update/channel` | 切换更新渠道（body: `{"channel":"stable"}` 或 `"prerelease"`），保存到 `data/updater.yaml` |
 | POST | `/api/admin/site/sync?id=` | 同步资源站分类：重新拉取分类列表并写回 `cid` |
 | POST | `/api/admin/site` | 新增资源站 |
 | PUT | `/api/admin/site/:id` | 更新资源站 |
@@ -261,6 +276,10 @@ curl http://127.0.0.1:9991/api/version
 | POST | `/api/admin/filter/analyze` | 分析资源站播放链接：自动解析 m3u8 + 探测广告，返回可一键填入「新增过滤规则」表单的字段（`url` 支持 m3u8 或播放页） |
 | POST | `/api/admin/filter/test` | 过滤测试：返回 保留/剔除 / 广告区间 / 检测方式 / 过滤后播放列表预览 |
 | GET | `/api/admin/filter/logs` | 最近 200 次去插播调用日志 |
+| GET | `/api/admin/adfilter/overlays` | 列出画面遮罩（内嵌广告）规则 |
+| POST | `/api/admin/adfilter/overlay` | 新增画面遮罩规则（`name` / `enabled` / `sort` / `url_prefixes` / `url_regexes` / `regions` / `remark`） |
+| PUT | `/api/admin/adfilter/overlay/:id` | 更新画面遮罩规则（`id` 支持 ID 或名称，请求字段可部分提交） |
+| DELETE | `/api/admin/adfilter/overlay/:id` | 删除画面遮罩规则 |
 | GET | `/api/admin/cleanpaths` | 查看调用路径设置 |
 | POST | `/api/admin/cleanpaths` | 保存调用路径设置（立即生效） |
 | POST | `/api/admin/reload` | 热重载配置 |
@@ -280,6 +299,7 @@ MXGJGT/
 │   ├── admin.go            # 后台管理 API（资源站 / 映射 CRUD + 测试/搜索/同步）
 │   ├── adminauth.go        # 网页后台登录鉴权 + 会话
 │   ├── adminassets.go      # 后台 logo / favicon / 侧边栏徽标（go:embed 内嵌）
+│   ├── adfilter.go         # 广告过滤 · 画面遮罩（内嵌广告）后台 API（CRUD + clean 下发）
 │   ├── assets/             # 内嵌静态资源（logo.png / favicon.png / logo-mark.png / hls.min.js）
 │   ├── mxadmin.html        # 网页后台页面（侧边栏仪表盘：首页 / 资源站 / 映射 / 广告过滤 / 系统设置 / 系统·更新）
 │   └── version.go          # 版本兼容导出
@@ -293,10 +313,11 @@ MXGJGT/
 │   ├── cache.go            # 搜索结果缓存
 │   └── updater.go          # 自动更新（GitHub Releases 下载 + 原子替换 + 自重启）
 ├── config/
-│   └── config.go           # 配置加载 / 热加载 / 持久化（含 cleanpaths / filter_sites）
+│   └── config.go           # 配置加载 / 热加载 / 持久化（含 cleanpaths / filter_sites / ad_overlay）
 ├── model/
-│   ├── types.go            # 数据结构（Response 含 qcb）
+│   ├── types.go            # 数据结构（Response 含 qcb / ad）
 │   ├── filter.go           # 广告过滤数据结构
+│   ├── adfilter.go         # 画面遮罩（内嵌广告）数据结构
 │   └── version.go          # 版本常量
 ├── utils/
 │   └── utils.go            # HTTP 工具
@@ -305,7 +326,9 @@ MXGJGT/
 │   ├── sites.yaml          # 资源站列表
 │   ├── mappings.yaml       # 官方站→资源站映射
 │   ├── cleanpaths.yaml     # 自定义调用路径（系统设置 · 路径设置）
-│   └── filter_sites.yaml   # M3U8 广告过滤站点规则
+│   ├── filter_sites.yaml   # M3U8 广告过滤站点规则
+│   ├── ad_overlay.yaml     # 画面遮罩（内嵌广告）规则
+│   └── updater.yaml        # 更新渠道（stable 正式版 / prerelease 先行版）
 ├── static/
 │   └── 404.html            # 可选的自定义伪装 HTML（默认内置 nginx 风格 404）
 ├── .github/workflows/
@@ -354,6 +377,14 @@ browser:
 
 > Chrome 探测顺序：`config.browser.chrome_path` → 环境变量 `MXGJGT_CHROME` → 常见安装路径 → `PATH`。找不到时自动降级到方案2/3。
 
+### `data/updater.yaml`
+
+更新渠道（首次启动自动生成，后台「系统 · 更新」切换后自动写回）：
+
+```yaml
+channel: stable   # stable=正式版（跟随 main 正式发布）/ prerelease=先行版（跟随开发分支预发布）
+```
+
 ### `data/sites.yaml`
 
 配置你的资源站搜索源：
@@ -374,11 +405,12 @@ browser:
 ## 🔄 自动更新机制
 
 1. **Cron 调度**：`updater.enabled: true` 时按 `interval` 定时执行
-2. **查最新版**：调用 GitHub Releases API，比对当前 `model.Version`
-3. **下载产物**：按当前 `GOOS/GOARCH` 选对应二进制，可走 `updater.mirrors` 镜像加速
-4. **原子替换**：旧文件改名为 `.bak`，新文件落位并 `chmod 0755`
-5. **自重启**：执行新二进制并退出旧进程
-6. **手动触发**：`POST /api/update`（登录网页后台免鉴权，否则需 API Key）
+2. **渠道选择**：按 `data/updater.yaml` 的 `channel` 决定拉取哪条发布 —— `stable`（正式版，`/releases/latest`）/ `prerelease`（先行版，`/releases` 首条非草稿），可在后台「系统 · 更新」切换
+3. **查最新版**：调用 GitHub Releases API，比对当前 `model.Version`（支持预发布后缀：同主干时正式版 > 先行版）
+4. **下载产物**：按当前 `GOOS/GOARCH` 选对应二进制，可走 `updater.mirrors` 镜像加速
+5. **原子替换**：旧文件改名为 `.bak`，新文件落位并 `chmod 0755`
+6. **自重启**：执行新二进制并退出旧进程
+7. **手动触发**：`POST /api/update`（登录网页后台免鉴权，否则需 API Key）
 
 ---
 
@@ -387,11 +419,16 @@ browser:
 推送 `v*` tag 或手动触发 `Release` 工作流，即可在云端构建并发布多平台产物：
 
 ```bash
-git tag v0.0.13 && git push origin v0.0.13
+# 正式版（stable 渠道）— main 分支
+git tag v0.0.17 && git push origin v0.0.17
+
+# 先行版（prerelease 渠道）— 开发分支
+git tag v0.0.17-dev.1 && git push origin v0.0.17-dev.1
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`
 - 产物自动打包 `zip` + `SHA256.txt`，挂到 GitHub Release
+- **版本号含 `-` 后缀的 tag（如 `v0.0.17-dev.1`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
 - 版本号经 `-ldflags -X mxgjgt/model.Version=` 注入
 
 ---

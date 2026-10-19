@@ -39,7 +39,7 @@ func handleAdminFilterSiteAdd(c *gin.Context) {
 		return
 	}
 	sites := config.GetFilterSites()
-	site := model.FilterSite{ID: newFilterID(derefStr(req.Name))}
+	site := model.FilterSite{ID: newRuleID(derefStr(req.Name))}
 	applyFilterSiteReq(&site, &req)
 	sites = append(sites, site)
 	if err := config.SaveFilterSites(sites); err != nil {
@@ -350,8 +350,9 @@ func derefStr(p *string) string {
 	return *p
 }
 
-// newFilterID 由名称生成站点规则 ID（小写去空格），再拼短随机串避免重名
-func newFilterID(name string) string {
+// newRuleID 由名称生成规则 ID（小写去空格），再拼短随机串避免重名
+// （M3U8 过滤规则与画面遮罩规则共用）
+func newRuleID(name string) string {
 	id := strings.ToLower(strings.Join(strings.Fields(name), ""))
 	if id == "" {
 		id = "rule"
