@@ -513,7 +513,7 @@ func randomID() string {
 
 func defaultConfigYAML() string {
 	return `# =============================================
-#  MXGJGT v0.0.14 — 主配置
+#  MXGJGT v0.0.16 — 主配置
 #  所有配置修改后调用 POST /api/admin/reload 热加载
 # =============================================
 

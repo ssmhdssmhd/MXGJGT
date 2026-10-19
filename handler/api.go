@@ -55,6 +55,12 @@ func RegisterRoutes(r *gin.Engine) {
 			// 系统设置 · 路径设置（自定义 clean 调用路径）
 			admin.GET("/cleanpaths",  handleAdminCleanPaths)
 			admin.POST("/cleanpaths", handleAdminSaveCleanPaths)
+
+			// 广告过滤 · 画面遮罩（内嵌广告 / 贴片）
+			admin.GET("/adfilter/overlays",       handleAdminAdOverlayRules)
+			admin.POST("/adfilter/overlay",       handleAdminAdOverlayRuleAdd)
+			admin.PUT("/adfilter/overlay/:id",    handleAdminAdOverlayRuleUpdate)
+			admin.DELETE("/adfilter/overlay/:id", handleAdminAdOverlayRuleDel)
 		}
 
 		api.POST("/update", handleUpdate)
@@ -153,6 +159,8 @@ func handleClean(c *gin.Context) {
 	resp := model.OK(jim, jj, u)
 	// qcb：去插播（M3U8 广告过滤）后的播放地址
 	resp.QCB = buildQCB(c, u)
+	// ad：画面遮罩（内嵌广告）规则，播放器据此叠加遮罩
+	resp.Ad = resolveAdOverlay(u)
 	resp.Time = time.Now().Format("2006-01-02 15:04:05")
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {
@@ -260,6 +268,7 @@ func handleSearch(c *gin.Context) {
 	jim, jj, url, best := resolvePlay(wd, ep, "")
 	resp := model.OK(jim, jj, url)
 	resp.QCB = buildQCB(c, url)
+	resp.Ad = resolveAdOverlay(url)
 	resp.Time = time.Now().Format("2006-01-02 15:04:05")
 	resp.KFZ = "射手沫蝴蝶"
 	if best == nil {

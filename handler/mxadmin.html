@@ -112,6 +112,25 @@
   .card{background:#fff;border-radius:var(--radius);padding:20px;box-shadow:0 14px 34px rgba(76,29,149,.12)}
   .card h2{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:10px;color:var(--ink)}
   .card h2 .spacer{flex:1}
+  .card h3{font-size:14px;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:10px;color:var(--ink)}
+  .card h3 .spacer{flex:1}
+  /* 广告过滤：子页签 */
+  .subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 16px}
+  .subtab{display:inline-flex;align-items:center;gap:6px;border:0;cursor:pointer;font-family:inherit;font-size:13px;
+    font-weight:600;padding:9px 16px;border-radius:11px;background:#f3effb;color:#5b5378;transition:.15s}
+  .subtab:hover{background:#ece6fb;color:var(--brand)}
+  .subtab.on{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;box-shadow:0 8px 18px rgba(139,92,246,.32)}
+  /* 画面遮罩：区域编辑 + 预览 */
+  .ov-preview{position:relative;width:100%;aspect-ratio:16/9;background:#111827;border-radius:11px;overflow:hidden;border:1px solid #2b3350}
+  .ov-preview .rect{position:absolute;box-sizing:border-box;border:1px solid rgba(255,255,255,.5)}
+  .ov-preview .rect em{position:absolute;left:0;top:0;right:0;font-style:normal;font-size:10px;line-height:1.4;padding:1px 4px;
+    color:#fff;background:rgba(0,0,0,.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ov-rows{overflow-x:auto}
+  .ov-row{display:grid;grid-template-columns:72px 72px 72px 72px 104px 58px 62px minmax(80px,1fr) 34px;gap:6px;align-items:center;margin-bottom:8px;min-width:640px}
+  .ov-row input,.ov-row select{width:100%;padding:8px;border:1px solid var(--line);border-radius:9px;font-size:12px;outline:none;
+    font-family:ui-monospace,Menlo,monospace;background:#fff;color:var(--ink)}
+  .ov-row select{font-family:inherit}
+  .ov-row input[type=color]{padding:2px;height:34px;cursor:pointer}
   table{width:100%;border-collapse:collapse;font-size:14px}
   th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
   th{color:var(--sub);font-weight:600;font-size:12px}
@@ -219,7 +238,7 @@
         </button>
         <button data-tab="filter">
           <svg class="i ic" viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
-          <span>M3U8 广告过滤</span>
+          <span>广告过滤</span>
         </button>
         <button data-tab="settings">
           <svg class="i ic" viewBox="0 0 24 24"><path d="M12 3.5l2 2.2 3-.5.6 3 2.6 1.6-1.6 2.6.5 3-3 .6-2.2 2-2.2-2-3 .5-.6-3L3.5 13l1.6-2.6-.5-3 3-.6z"/><circle cx="12" cy="12" r="2.4"/></svg>
@@ -312,15 +331,35 @@
           <div id="maps-box"></div>
         </section>
 
-        <!-- M3U8 广告过滤 -->
+        <!-- 广告过滤（一级菜单：去插播 + 画面遮罩） -->
         <section id="tab-filter" class="card hide">
-          <h2>M3U8 广告过滤（去插播）规则 <span class="spacer"></span>
-            <button class="btn ghost sm" id="btn-refresh-filter">刷新</button>
-            <button class="btn ghost sm" id="btn-filter-logs">调用日志</button>
-            <button class="btn primary sm" id="btn-add-filter">新增规则</button>
-          </h2>
-          <p class="empty">按主机名前缀 / 正则匹配播放域名，命中后自动剔除插播广告片段；未命中则走自动模式（块分析 + 序列连贯性）。</p>
-          <div id="filter-box"></div>
+          <h2>广告过滤 <span class="spacer"></span></h2>
+          <p class="empty">统一管理全部去广告能力：插播片段级（M3U8 去插播）与画面内嵌级（遮罩贴片）。</p>
+          <div class="subtabs" id="ad-subtabs">
+            <button class="subtab on" data-sub="m3u8">去插播（M3U8）</button>
+            <button class="subtab" data-sub="overlay">画面遮罩（内嵌广告）</button>
+          </div>
+
+          <!-- 子页：去插播 -->
+          <div id="sub-ad-m3u8">
+            <h3>M3U8 广告过滤（去插播）规则 <span class="spacer"></span>
+              <button class="btn ghost sm" id="btn-refresh-filter">刷新</button>
+              <button class="btn ghost sm" id="btn-filter-logs">调用日志</button>
+              <button class="btn primary sm" id="btn-add-filter">新增规则</button>
+            </h3>
+            <p class="empty">按主机名前缀 / 正则匹配播放域名，命中后自动剔除插播广告片段；未命中则走自动模式（块分析 + 序列连贯性）。</p>
+            <div id="filter-box"></div>
+          </div>
+
+          <!-- 子页：画面遮罩 -->
+          <div id="sub-ad-overlay" class="hide">
+            <h3>画面遮罩（内嵌广告 / 贴片）规则 <span class="spacer"></span>
+              <button class="btn ghost sm" id="btn-refresh-overlay">刷新</button>
+              <button class="btn primary sm" id="btn-add-overlay">新增规则</button>
+            </h3>
+            <p class="empty">针对「广告文字 / 台标 / 二维码烧进画面像素」的内嵌广告：命中播放域名后，服务端在 <code class="mono">/api/clean</code> 响应里以 <code class="mono">ad</code> 字段下发遮罩区域，播放器按相对坐标叠加遮罩（零转码、零带宽、秒级生效）。</p>
+            <div id="overlay-box"></div>
+          </div>
         </section>
 
         <!-- 系统设置 · 路径设置 -->
@@ -484,7 +523,7 @@
     });
     if (tab === "sys" && !verData.remote_checked) checkUpdate(false);
     if (tab === "home") renderHome();
-    if (tab === "filter") loadFilterSites();
+    if (tab === "filter") switchAdSub("m3u8");
     if (tab === "settings") loadCleanPaths();
   }
   $$(".menu button").forEach(function (b) {
@@ -498,7 +537,7 @@
       "· 首页：总览统计与快捷入口\n" +
       "· 资源站管理：新增/编辑/测试/搜索/同步资源站\n" +
       "· 平台映射：设置各官方平台优先使用的资源站\n" +
-      "· M3U8 广告过滤：按站点规则剔除插播广告片段，可探测/测试\n" +
+      "· 广告过滤：去插播（M3U8 剔除插播片段）+ 画面遮罩（遮挡烧进画面的广告文字 / 台标）\n" +
       "· 系统设置：自定义 /api/clean 调用路径\n" +
       "· 系统·更新：查看当前/远程版本，重载配置、检查并更新\n" +
       "· 顶部「关键词搜索」：在已启用的资源站中全局搜索剧集\n" +
@@ -1258,6 +1297,178 @@
   $("#btn-refresh-filter").onclick = loadFilterSites;
   $("#btn-filter-logs").onclick = openFilterLogsModal;
   $("#btn-add-filter").onclick = function () { openFilterSiteModal("add", {}); };
+
+  // ===== 广告过滤：子页签（去插播 / 画面遮罩） =====
+  function switchAdSub(sub) {
+    $$("#ad-subtabs .subtab").forEach(function (b) { b.classList.toggle("on", b.dataset.sub === sub); });
+    var m = $("#sub-ad-m3u8"), o = $("#sub-ad-overlay");
+    if (m) m.classList.toggle("hide", sub !== "m3u8");
+    if (o) o.classList.toggle("hide", sub !== "overlay");
+    if (sub === "m3u8") loadFilterSites();
+    if (sub === "overlay") loadOverlayRules();
+  }
+  $$("#ad-subtabs .subtab").forEach(function (b) {
+    b.addEventListener("click", function () { switchAdSub(b.dataset.sub); });
+  });
+
+  // ===== 广告过滤 · 画面遮罩（内嵌广告） =====
+  var allOverlayRules = [];
+  // 当前编辑中的遮罩区域（弹窗内唯一状态源）
+  var regions = [];
+  function overlayById(id) { return allOverlayRules.filter(function (x) { return x.id === id; })[0]; }
+  function loadOverlayRules() {
+    api("/api/admin/adfilter/overlays").then(function (r) {
+      allOverlayRules = (r.data || {}).rules || [];
+      renderOverlayRules(allOverlayRules);
+    }).catch(function (e) { $("#overlay-box").innerHTML = '<p class="empty">加载失败：' + esc(e.message) + "</p>"; });
+  }
+  function renderOverlayRules(list) {
+    if (!list.length) { $("#overlay-box").innerHTML = '<p class="empty">暂无画面遮罩规则，点击右上角「新增规则」。</p>'; return; }
+    var h = ["<table><thead><tr><th>名称 / ID</th><th>状态</th><th>匹配前缀</th><th>遮罩区域</th><th>操作</th></tr></thead><tbody>"];
+    list.forEach(function (r) {
+      h.push("<tr>" +
+        "<td>" + esc(r.name) + "<div><code class='mono'>" + esc(r.id) + "</code></div></td>" +
+        "<td>" + (r.enabled ? '<span class="pill on">启用</span>' : '<span class="pill off">停用</span>') + "</td>" +
+        "<td><code class='mono'>" + esc((r.url_prefixes || []).join(", ") || "-") + "</code></td>" +
+        "<td>" + (r.regions || []).length + " 个</td>" +
+        "<td><div class='ops'>" +
+          "<button class='btn ghost sm' data-oact='edit' data-id='" + esc(r.id) + "'>编辑</button>" +
+          "<button class='btn ghost sm' data-oact='toggle' data-id='" + esc(r.id) + "'>" + (r.enabled ? "停用" : "启用") + "</button>" +
+          "<button class='btn danger sm' data-oact='del' data-id='" + esc(r.id) + "'>删除</button>" +
+        "</div></td></tr>");
+    });
+    h.push("</tbody></table>");
+    var box = $("#overlay-box"); box.innerHTML = h.join("");
+    box.querySelectorAll("button[data-oact]").forEach(function (btn) {
+      var rule = overlayById(btn.dataset.id);
+      btn.addEventListener("click", function () {
+        if (!rule) return;
+        var a = btn.dataset.oact;
+        if (a === "edit") openOverlayRuleModal("edit", rule);
+        else if (a === "toggle") updateOverlayRule(rule.id, { enabled: !rule.enabled });
+        else if (a === "del") { if (confirm("确认删除画面遮罩规则 " + rule.name + " ?")) delOverlayRule(rule.id); }
+      });
+    });
+  }
+  function updateOverlayRule(id, body) {
+    api("/api/admin/adfilter/overlay/" + encodeURIComponent(id), { method: "PUT", body: body })
+      .then(function (r) { toast(r.code === 200 ? "已更新" : (r.msg || "失败")); loadOverlayRules(); });
+  }
+  function delOverlayRule(id) {
+    api("/api/admin/adfilter/overlay/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function (r) { toast(r.code === 200 ? "已删除" : (r.msg || "失败")); loadOverlayRules(); });
+  }
+  // 遮罩区域：相对颜色 → rgba（供预览显示，兼容手工写入的非法色值）
+  function ovRgba(region) {
+    var hex = String(region.color || "#000000");
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) hex = "#000000";
+    var n = parseInt(hex.slice(1), 16);
+    var a = region.opacity == null || isNaN(region.opacity) ? 1 : Math.max(0, Math.min(1, region.opacity));
+    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+  }
+  function ovPct(v) {
+    v = isNaN(v) ? 0 : Math.max(0, Math.min(1, v));
+    return (v * 100).toFixed(2) + "%";
+  }
+  function openOverlayRuleModal(mode, rule) {
+    rule = rule || {};
+    var isEdit = mode === "edit";
+    regions = (rule.regions || []).map(function (r) { return Object.assign({}, r); });
+    $("#modal-root").innerHTML =
+      '<div class="mask"><div class="modal wide"><h3>' + (isEdit ? "编辑画面遮罩规则" : "新增画面遮罩规则") + "</h3>" +
+      '<div class="grid">' +
+      '<div class="field"><label>名称 *</label><input id="o-name" value="' + esc(rule.name) + '"></div>' +
+      '<div class="field"><label>启用</label><select id="o-enabled"><option value="1"' + (rule.enabled === false ? "" : " selected") + '>启用</option><option value="0"' + (rule.enabled === false ? " selected" : "") + '>停用</option></select></div>' +
+      '<div class="field"><label>排序 sort</label><input id="o-sort" type="number" value="' + esc(rule.sort == null ? 0 : rule.sort) + '"></div>' +
+      '<div class="field"><label>备注</label><input id="o-remark" value="' + esc(rule.remark) + '"></div>' +
+      '<div class="field full"><label>URL 匹配前缀（一行一个，按播放域名主机名匹配）</label><textarea class="ta" rows="2" id="o-prefixes">' + esc((rule.url_prefixes || []).join("\n")) + "</textarea></div>" +
+      '<div class="field full"><label>URL 匹配正则（一行一个；以 ^ 开头或含 :// 时匹配整条 URL）</label><textarea class="ta" rows="2" id="o-regexes">' + esc((rule.url_regexes || []).join("\n")) + "</textarea></div>" +
+      "</div>" +
+      '<div class="field full"><label>画面预览（16:9，坐标均为相对比例 0~1）</label><div class="ov-preview" id="o-preview"></div></div>' +
+      '<div class="field full"><label>遮罩区域（x/y=左上角，w/h=宽高；相对比例 0~1，跨分辨率通用）</label>' +
+        '<div class="ov-rows" id="o-rows"></div>' +
+        '<button class="btn ghost sm" id="o-add" type="button">＋ 添加区域</button>' +
+      "</div>" +
+      "<footer>" +
+      '<button class="btn ghost" id="o-cancel">取消</button>' +
+      '<button class="btn primary" id="o-save">保存</button>' +
+      "</footer></div></div>";
+    renderOvRows();
+    renderOvPreview();
+    $("#o-cancel").onclick = function () { $("#modal-root").innerHTML = ""; };
+    $("#o-rows").addEventListener("input", function () { regions = collectOvRegions(); renderOvPreview(); });
+    $("#o-rows").addEventListener("click", function (e) {
+      var b = e.target.closest(".ov-del");
+      if (!b) return;
+      regions = collectOvRegions();
+      regions.splice(parseInt(b.dataset.i, 10), 1);
+      renderOvRows(); renderOvPreview();
+    });
+    $("#o-add").onclick = function () {
+      regions = collectOvRegions();
+      regions.push({ x: 0.02, y: 0.03, w: 0.16, h: 0.1, mode: "cover", color: "#000000", opacity: 1, label: "" });
+      renderOvRows(); renderOvPreview();
+    };
+    $("#o-save").onclick = function () {
+      var body = {
+        name: $("#o-name").value.trim(),
+        enabled: $("#o-enabled").value === "1",
+        sort: parseInt($("#o-sort").value, 10) || 0,
+        url_prefixes: lines($("#o-prefixes").value),
+        url_regexes: lines($("#o-regexes").value),
+        regions: collectOvRegions(),
+        remark: $("#o-remark").value.trim()
+      };
+      if (!body.name) { toast("请填写名称"); return; }
+      if (!body.regions.length) { toast("请至少添加一个遮罩区域"); return; }
+      if (isEdit) updateOverlayRule(rule.id, body);
+      else api("/api/admin/adfilter/overlay", { method: "POST", body: body })
+        .then(function (r) { toast(r.code === 200 ? "已添加" : (r.msg || "失败")); loadOverlayRules(); });
+      $("#modal-root").innerHTML = "";
+    };
+  }
+  function renderOvRows() {
+    var box = $("#o-rows");
+    if (!box) return;
+    if (!regions.length) { box.innerHTML = '<p class="empty">暂无区域，点击下方「＋ 添加区域」。</p>'; return; }
+    box.innerHTML = regions.map(function (r, i) {
+      return '<div class="ov-row" data-i="' + i + '">' +
+        '<input class="ov-x" type="number" step="0.01" min="0" max="1" placeholder="x" value="' + esc(r.x) + '">' +
+        '<input class="ov-y" type="number" step="0.01" min="0" max="1" placeholder="y" value="' + esc(r.y) + '">' +
+        '<input class="ov-w" type="number" step="0.01" min="0" max="1" placeholder="w" value="' + esc(r.w) + '">' +
+        '<input class="ov-h" type="number" step="0.01" min="0" max="1" placeholder="h" value="' + esc(r.h) + '">' +
+        '<select class="ov-mode">' + secOpts([["cover", "纯色遮挡"], ["blur", "模糊"]], r.mode || "cover") + "</select>" +
+        '<input class="ov-color" type="color" value="' + esc(/^#[0-9a-fA-F]{6}$/.test(r.color || "") ? r.color : "#000000") + '">' +
+        '<input class="ov-op" type="number" step="0.1" min="0" max="1" placeholder="透明" value="' + esc(r.opacity == null ? 1 : r.opacity) + '">' +
+        '<input class="ov-label" type="text" placeholder="备注（如：左上角台标）" value="' + esc(r.label) + '">' +
+        '<button class="btn danger sm ov-del" type="button" data-i="' + i + '">×</button>' +
+        "</div>";
+    }).join("");
+  }
+  function collectOvRegions() {
+    return $$("#o-rows .ov-row").map(function (row) {
+      var n = function (sel) { var v = parseFloat(row.querySelector(sel).value); return isNaN(v) ? 0 : v; };
+      return {
+        x: n(".ov-x"), y: n(".ov-y"), w: n(".ov-w"), h: n(".ov-h"),
+        mode: row.querySelector(".ov-mode").value,
+        color: row.querySelector(".ov-color").value,
+        opacity: parseFloat(row.querySelector(".ov-op").value) || 0,
+        label: row.querySelector(".ov-label").value.trim()
+      };
+    });
+  }
+  function renderOvPreview() {
+    var box = $("#o-preview");
+    if (!box) return;
+    box.innerHTML = regions.map(function (r) {
+      var bg = r.mode === "blur" ? "rgba(120,140,180,.35)" : ovRgba(r);
+      return '<div class="rect" style="left:' + ovPct(r.x) + ";top:" + ovPct(r.y) +
+        ";width:" + ovPct(r.w) + ";height:" + ovPct(r.h) + ";background:" + bg + '">' +
+        "<em>" + esc(r.label || "") + "</em></div>";
+    }).join("");
+  }
+  $("#btn-refresh-overlay").onclick = loadOverlayRules;
+  $("#btn-add-overlay").onclick = function () { openOverlayRuleModal("add", {}); };
 
   // ===== 系统设置 · 路径设置 =====
   function loadCleanPaths() {
