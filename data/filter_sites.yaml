@@ -1,0 +1,27 @@
+# =============================================
+#  M3U8 广告过滤（去插播）站点规则
+#  url_prefixes: 按主机名前缀匹配（任一命中即命中该站点）
+#  url_regexes:  默认只匹配主机名；以 ^ 开头或含 :// 时匹配整条 URL
+#  detect_mode:  auto / sequence / blockcut / slicebatch / shortblock / fingerprint / hash / both
+#  parse_type:   both / duration / hash / direct
+#  index_mode:   auto / single / fixed
+#  stream_pick:  first / highest / lowest
+#  fingerprint:  广告时长指纹，一行一组（逗号分隔的秒数）
+# =============================================
+
+- id: "jjm3u8"
+  name: "吉吉资源 M3U8"
+  enabled: true
+  sort: 0
+  parse_type: both
+  detect_mode: auto
+  index_mode: auto
+  stream_pick: first
+  fixed_sub: ""
+  proxy_url: ""
+  url_prefixes: ["svip.jijiplay", "jijiplay"]
+  url_regexes: []
+  sub_dir: "jjm3u8"
+  fingerprint: ""
+  regex_list: []
+  remark: "示例规则：按主机名前缀匹配吉吉资源播放域名"
