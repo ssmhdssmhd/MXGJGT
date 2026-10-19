@@ -19,6 +19,12 @@ import (
 // defaultCleanPath 默认调用路径（与线上既有调用方式保持一致）
 const defaultCleanPath = "/api/clean"
 
+// 更新渠道：stable=正式版（跟随 main 正式发布）/ prerelease=先行版（跟随先行版 dev 预发布）
+const (
+	ChannelStable     = "stable"
+	ChannelPrerelease = "prerelease"
+)
+
 var (
 	appConfig   *model.AppConfig
 	sites       []model.ResourceSite
@@ -26,6 +32,7 @@ var (
 	cleanPaths   []model.CleanPath
 	filterSites  []model.FilterSite
 	overlayRules []model.AdOverlayRule
+	updateChannel string
 
 	dataDir  string
 	cacheDir string
@@ -33,6 +40,37 @@ var (
 
 	mu sync.RWMutex
 )
+
+// GetUpdateChannel 返回当前更新渠道：stable（正式版）/ prerelease（先行版）
+func GetUpdateChannel() string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if updateChannel == "" {
+		return ChannelStable
+	}
+	return updateChannel
+}
+
+// SaveUpdateChannel 保存更新渠道到 data/updater.yaml
+func SaveUpdateChannel(ch string) error {
+	ch = normalizeChannel(ch)
+	mu.Lock()
+	updateChannel = ch
+	mu.Unlock()
+	data, err := yaml.Marshal(map[string]string{"channel": ch})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "updater.yaml"), data, 0644)
+}
+
+// normalizeChannel 仅允许 stable / prerelease，其它值一律回退 stable
+func normalizeChannel(ch string) string {
+	if strings.EqualFold(strings.TrimSpace(ch), ChannelPrerelease) {
+		return ChannelPrerelease
+	}
+	return ChannelStable
+}
 
 // ===== 路径初始化 =====
 
@@ -96,6 +134,7 @@ func EnsureDefaults() {
 	ensureFile(filepath.Join(dataDir, "cleanpaths.yaml"), defaultCleanPathsYAML())
 	ensureFile(filepath.Join(dataDir, "filter_sites.yaml"), defaultFilterSitesYAML())
 	ensureFile(filepath.Join(dataDir, "ad_overlay.yaml"), defaultOverlayRulesYAML())
+	ensureFile(filepath.Join(dataDir, "updater.yaml"), defaultUpdaterYAML())
 }
 
 func ensureFile(path, content string) {
@@ -178,6 +217,20 @@ func LoadConfig(dir string) error {
 			normalizeOverlayRules(rs)
 			overlayRules = rs
 		}
+	}
+
+	// updater.yaml —— 更新渠道（正式版 stable / 先行版 prerelease）
+	updateFile := filepath.Join(dir, "updater.yaml")
+	if data, err := os.ReadFile(updateFile); err == nil {
+		var u struct {
+			Channel string `yaml:"channel"`
+		}
+		if yaml.Unmarshal(data, &u) == nil {
+			updateChannel = normalizeChannel(u.Channel)
+		}
+	}
+	if updateChannel == "" {
+		updateChannel = ChannelStable
 	}
 
 	return nil
@@ -680,5 +733,18 @@ func defaultOverlayRulesYAML() string {
       opacity: 1
       label: "左上角台标"
   remark: "示例规则（默认停用）：启用后播放器将在相对坐标区域叠加遮罩"
+`
+}
+
+// defaultUpdaterYAML 更新渠道（后台「系统 · 更新」可切换，无需手工改本文件）
+func defaultUpdaterYAML() string {
+	return `# =============================================
+#  MXGJGT — 更新渠道
+#  channel: stable     = 正式版（跟随 main 的正式发布）
+#           prerelease = 先行版（跟随先行版 dev 的预发布）
+#  后台「系统 · 更新」可切换，保存后写回本文件
+# =============================================
+
+channel: stable
 `
 }

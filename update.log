@@ -1,3 +1,80 @@
+MXGJGT v0.0.17-dev.1 202610192039
+================================
+
+## 后台「系统 · 更新」新增双更新渠道（正式版 / 先行版）
+
+> 需求：后台更新增加先行版，可在后台切换更新**正式版（main）**与**先行版**；删除多余开发分支，仅保留 `main`（稳定版，无改动）与一个先行版分支（`dev`），当前分支作为先行版用于测试与开发。
+
+### ✨ 新增
+
+**1. 双更新渠道 stable / prerelease**
+
+- 新增渠道常量：`stable`=正式版（跟随 main 正式发布）/ `prerelease`=先行版（跟随开发分支 dev 预发布）
+- 后台「系统 · 更新」新增「更新渠道」下拉 +「切换渠道」按钮，切换后即时保存并自动重新检查远程版本
+- 配置持久化到 `data/updater.yaml`（首次启动自动写默认模板 `channel: stable`；缺省/非法值一律回退 `stable`）
+
+**2. 渠道感知的 Release 拉取**
+
+- 正式版（stable）：走 GitHub `/releases/latest`，**GitHub 会自动排除预发布**，稳定可靠
+- 先行版（prerelease）：走 `/releases?per_page=20` 取**首条非草稿**发布（含预发布），用于抢先体验 / 测试
+
+**3. 版本比较支持预发布后缀**
+
+- `compareVersion` 扩展为「数字主干 + 预发布后缀」：先比主干（如 `0.0.17`），主干相同再比后缀
+- **同主干时：无后缀（正式版）> 有后缀（先行版）**；后缀按段比较（数字段按数值，其余按字典序），如 `-dev.2 > -dev.1`
+- 避免「先行版数字更大却因后缀被误判」「正式版与先行版相等」等误报
+
+**4. 接口**
+
+```
+GET  /api/version                 → 返回新增 channel 字段（当前渠道）
+GET  /api/admin/update/check      → 返回新增 channel 字段
+POST /api/admin/update/channel    → 切换渠道（body: {"channel":"stable"|"prerelease"}），写回 updater.yaml
+```
+
+**5. 云端编译标记先行版**
+
+- `.github/workflows/release.yml`：tag 含 `-` 后缀（如 `v0.0.17-dev.1`）自动标记为 **pre-release** 且 `make_latest=false`，故正式版渠道不会拉到先行版
+- 手动触发工作流时以输入版本号作为 tag（修复原先误用分支名当 tag 的问题）
+
+**6. 分支整理**
+
+- 仅保留 `main`（稳定版，代码未改动）与 `dev`（先行版，用于测试/开发）
+- 删除早期分叉分支 `feature/adfilter` / `feature/cover-id-dict` / `trae/agent-*`；当前分支已重命名并作为先行版分支
+
+**7. 版本号**
+
+- `model/version.go` / `Makefile`：`0.0.16 → 0.0.17-dev.1`（先行版带 `-dev.N` 预发布后缀，合并回 main 正式发布时去掉后缀）
+
+### 📁 变更文件
+
+```
+modified: config/config.go      # 渠道常量 / 全局变量 / Get·Save·normalize / updater.yaml 模板与加载
+modified: service/updater.go    # 渠道感知拉取（/releases/latest 与 /releases 首条）+ 预发布后缀版本比较 + channelLabel
+modified: handler/api.go        # 注册 POST /api/admin/update/channel；/api/version 返回 channel
+modified: handler/admin.go      # 新增 handleAdminUpdateChannel
+modified: handler/mxadmin.html  # 「系统 · 更新」渠道下拉 + 切换按钮 + 渠道显示
+modified: .github/workflows/release.yml  # 含 - 后缀的 tag → pre-release；手动触发 tag 修正
+modified: model/version.go      # 0.0.16 → 0.0.17-dev.1
+modified: Makefile              # VERSION 0.0.17-dev.1
+modified: README.md             # 双渠道 / updater.yaml / 接口 / 云端编译说明
+```
+
+### 📋 实测
+
+```
+go build ./...                          → 通过，无报错 ✅
+go vet ./...                            → 通过 ✅
+GET  /api/version                        → 含 channel=stable（默认）✅
+POST /api/admin/update/channel(stable)   → 保存成功 ✅
+POST /api/admin/update/channel(prerelease)→ 切换为先行版 + 远端拉取列表首条 ✅
+POST /api/admin/update/channel(非法值)    → 回退 stable（normalize）✅
+data/updater.yaml                        → channel 正确持久化 ✅
+后台「系统 · 更新」                        → 渠道下拉回显 + 切换后自动复查远程版本 ✅
+```
+
+---
+
 MXGJGT v0.0.16 202610191949
 ============================
 

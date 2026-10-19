@@ -34,6 +34,7 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.GET("/site/detail",  handleAdminSiteDetail)
 			admin.GET("/stream",       handleAdminPlayStream)
 			admin.GET("/update/check", handleAdminUpdateCheck)
+			admin.POST("/update/channel", handleAdminUpdateChannel)
 			admin.POST("/site/sync",   handleAdminSyncSite)
 			admin.POST("/site",        handleAdminAddSite)
 			admin.PUT("/site/:id",     handleAdminUpdateSite)
@@ -392,6 +393,7 @@ func handleVersion(c *gin.Context) {
 			"build":     BuildTime,
 			"repo_url":  config.GetConfig().Updater.RepoURL,
 			"updater":   config.GetConfig().Updater.Enabled,
+			"channel":   config.GetUpdateChannel(),
 			"kfz":       "射手沫蝴蝶",
 		},
 	})

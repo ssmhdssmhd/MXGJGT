@@ -59,6 +59,33 @@ func handleAdminUpdateCheck(c *gin.Context) {
 	})
 }
 
+// handleAdminUpdateChannel POST /api/admin/update/channel
+// 切换更新渠道：stable=正式版（跟随 main 正式发布）/ prerelease=先行版（跟随先行版 dev 预发布）
+func handleAdminUpdateChannel(c *gin.Context) {
+	var req struct {
+		Channel string `json:"channel"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(200, model.Fail(400, "参数错误"))
+		return
+	}
+	if err := config.SaveUpdateChannel(req.Channel); err != nil {
+		c.JSON(200, model.Fail(500, "保存失败: "+err.Error()))
+		return
+	}
+	ch := config.GetUpdateChannel()
+	label := "正式版"
+	if ch == config.ChannelPrerelease {
+		label = "先行版"
+	}
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Msg:  "已切换为" + label + "更新渠道",
+		Data: map[string]any{"channel": ch},
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
 // ========= 资源站 CRUD =========
 
 func handleAdminListSites(c *gin.Context) {

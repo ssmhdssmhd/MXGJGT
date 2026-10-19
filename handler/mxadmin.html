@@ -381,6 +381,15 @@
           </h2>
           <div class="kv" id="sys-info"></div>
           <div style="margin-top:18px" class="row">
+            <label class="lbl" for="upd-channel">更新渠道</label>
+            <select id="upd-channel">
+              <option value="stable">正式版（stable · 跟随 main 正式发布）</option>
+              <option value="prerelease">先行版（prerelease · 跟随开发分支预发布）</option>
+            </select>
+            <button class="btn ghost sm" id="btn-save-channel">切换渠道</button>
+          </div>
+          <p class="empty">正式版仅拉取正式发布（GitHub 自动排除预发布）；先行版拉取最新一条发布（含预发布），用于测试与抢先体验。</p>
+          <div style="margin-top:18px" class="row">
             <button class="btn ghost" id="btn-reload">重载配置</button>
             <button class="btn primary" id="btn-update">立即更新</button>
           </div>
@@ -450,9 +459,13 @@
     var d = verData;
     var rv = remoteVer;
     if (d.remote_checked && d.remote_error) rv = "检查失败";
+    // 回填当前更新渠道
+    var sel = $("#upd-channel");
+    if (sel && d.channel) sel.value = d.channel;
     $("#sys-info").innerHTML =
       '<div><b>当前版本</b>v' + esc(d.version || "?") + "</div>" +
       '<div><b>远程版本</b>' + esc(rv) + "</div>" +
+      '<div><b>更新渠道</b>' + (d.channel === "prerelease" ? "先行版" : "正式版") + "</div>" +
       '<div><b>构建时间</b>' + esc(d.build || "-") + "</div>" +
       '<div><b>更新仓库</b>' + esc(d.repo_url || "-") + "</div>" +
       '<div><b>定时更新</b>' + (d.updater ? "已开启" : "已关闭") + "</div>";
@@ -1051,6 +1064,20 @@
   }
   $("#btn-check").onclick = function () { checkUpdate(true); };
   $("#q-check").onclick = function () { switchTab("sys"); checkUpdate(true); };
+  // 切换更新渠道并保存（保存后远程版本需重新检查）
+  $("#btn-save-channel").onclick = function () {
+    var ch = $("#upd-channel").value;
+    api("/api/admin/update/channel", { method: "POST", body: { channel: ch } })
+      .then(function (r) {
+        toast(r.msg || "已切换");
+        verData.channel = (r.data || {}).channel || ch;
+        remoteVer = "未检查";
+        verData.remote_checked = false;
+        renderSys();
+        checkUpdate(false);
+      })
+      .catch(function (e) { toast("切换失败：" + (e.message || "网络错误")); });
+  };
   function reloadConf() {
     api("/api/admin/reload", { method: "POST" })
       .then(function (r) { toast(r.code === 200 ? "配置已重载" : (r.msg || "失败")); loadSites(); loadMaps(); });
