@@ -86,6 +86,16 @@ func handleAdminUpdateChannel(c *gin.Context) {
 	})
 }
 
+// handleAdminUpdateProgress GET /api/admin/update/progress
+// 返回当前更新进度（供前端轮询展示进度条）
+func handleAdminUpdateProgress(c *gin.Context) {
+	c.JSON(http.StatusOK, model.Response{
+		Code: 200,
+		Data: service.GetUpdateProgress(),
+		Time: time.Now().Format("2006-01-02 15:04:05"),
+	})
+}
+
 // ========= 资源站 CRUD =========
 
 func handleAdminListSites(c *gin.Context) {
@@ -149,12 +159,24 @@ func handleAdminUpdateSite(c *gin.Context) {
 	sites := config.GetSites()
 	for i, s := range sites {
 		if s.ID == id || s.Name == id {
-			if req.Name != nil { s.Name = *req.Name }
-			if req.URL != nil { s.URL = *req.URL }
-			if req.DetailURL != nil { s.DetailURL = *req.DetailURL }
-			if req.CID != nil { s.CID = *req.CID }
-			if req.Ads != nil { s.Ads = *req.Ads }
-			if req.Enabled != nil { s.Enabled = *req.Enabled }
+			if req.Name != nil {
+				s.Name = *req.Name
+			}
+			if req.URL != nil {
+				s.URL = *req.URL
+			}
+			if req.DetailURL != nil {
+				s.DetailURL = *req.DetailURL
+			}
+			if req.CID != nil {
+				s.CID = *req.CID
+			}
+			if req.Ads != nil {
+				s.Ads = *req.Ads
+			}
+			if req.Enabled != nil {
+				s.Enabled = *req.Enabled
+			}
 			sites[i] = s
 			if err := config.SaveSites(sites); err != nil {
 				c.JSON(200, model.Fail(500, err.Error()))
@@ -213,9 +235,9 @@ func handleAdminAutoCMS(c *gin.Context) {
 		Code: 200,
 		Msg:  "分析成功，请确认后保存",
 		Data: map[string]any{
-			"site":  analyzed,
-			"cids":  cids,
-			"hint":  "确认无误后调用 POST /api/admin/site 保存",
+			"site": analyzed,
+			"cids": cids,
+			"hint": "确认无误后调用 POST /api/admin/site 保存",
 		},
 		Time: time.Now().Format("2006-01-02 15:04:05"),
 	})

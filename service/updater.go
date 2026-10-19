@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"mxgjgt/config"
@@ -23,6 +24,36 @@ import (
 )
 
 // ===== GitHub Releases API =====
+
+// UpdateProgress 更新进度状态（供前端轮询展示进度条）
+// 阶段占比：检查 0~10%、下载 10~70%、替换 70~90%、重启 90~100%
+type UpdateProgress struct {
+	Running bool   `json:"running"` // 是否正在更新
+	Phase   string `json:"phase"`   // 当前阶段：检查 / 下载 / 替换 / 重启 / 失败
+	Percent int    `json:"percent"` // 0~100
+	Message string `json:"message"` // 状态消息
+	Error   string `json:"error"`   // 错误信息（有值表示失败）
+	Done    bool   `json:"done"`    // 是否已结束（成功或失败；成功时服务会重启）
+}
+
+var (
+	updateMu       sync.RWMutex
+	updateProgress UpdateProgress
+)
+
+// setUpdateProgress 设置更新进度（内部使用）
+func setUpdateProgress(p UpdateProgress) {
+	updateMu.Lock()
+	defer updateMu.Unlock()
+	updateProgress = p
+}
+
+// GetUpdateProgress 获取当前更新进度
+func GetUpdateProgress() UpdateProgress {
+	updateMu.RLock()
+	defer updateMu.RUnlock()
+	return updateProgress
+}
 
 type ghRelease struct {
 	TagName     string    `json:"tag_name"`
@@ -190,13 +221,29 @@ func StartAutoUpdater() (*cron.Cron, error) {
 	return c, nil
 }
 
-// ManualUpdate 手动触发更新（供 API 调用）
+// ManualUpdate 手动触发更新（异步执行，立即返回，前端轮询进度）
 func ManualUpdate() string {
-	start := time.Now()
-	if err := DoUpdate(); err != nil {
-		return fmt.Sprintf("更新失败: %v", err)
+	updateMu.RLock()
+	running := updateProgress.Running
+	updateMu.RUnlock()
+	if running {
+		return "更新正在进行中，请稍后..."
 	}
-	return fmt.Sprintf("更新完成，耗时 %v，正在重启...", time.Since(start))
+	setUpdateProgress(UpdateProgress{Running: true, Phase: "初始化", Percent: 0, Message: "准备更新..."})
+	go func() {
+		err := DoUpdate()
+		if err != nil {
+			setUpdateProgress(UpdateProgress{
+				Running: false,
+				Phase:   "失败",
+				Percent: 0,
+				Error:   err.Error(),
+				Done:    true,
+				Message: "更新失败: " + err.Error(),
+			})
+		}
+	}()
+	return "已触发更新，正在下载并替换，请稍候..."
 }
 
 // DoUpdate 执行一次完整更新
@@ -212,6 +259,7 @@ func DoUpdate() error {
 	}
 	channel := config.GetUpdateChannel()
 
+	setUpdateProgress(UpdateProgress{Running: true, Phase: "检查更新", Percent: 5, Message: "正在检查最新版本..."})
 	logUpdate("检查更新: %s (当前 v%s, 渠道 %s)", repo, model.Version, channelLabel(channel))
 
 	// 1. 获取最新 release（按渠道：正式版 / 先行版）
@@ -225,8 +273,10 @@ func DoUpdate() error {
 	if cmp := compareVersion(tag, model.Version); cmp <= 0 {
 		if cmp == 0 {
 			logUpdate("已是最新版本 v%s，无需更新", model.Version)
+			setUpdateProgress(UpdateProgress{Running: false, Phase: "完成", Percent: 100, Done: true, Message: "已是最新版本 v" + model.Version + "，无需更新"})
 		} else {
 			logUpdate("远程版本 v%s 不高于当前 v%s，跳过更新", tag, model.Version)
+			setUpdateProgress(UpdateProgress{Running: false, Phase: "完成", Percent: 100, Done: true, Message: "远程版本不高于当前版本，跳过更新"})
 		}
 		return nil
 	}
@@ -246,20 +296,37 @@ func DoUpdate() error {
 		}
 	}
 
-	// 3. 下载到临时文件
-	tmpPath, err := downloadToTemp(downloadURL, asset.Size)
+	setUpdateProgress(UpdateProgress{Running: true, Phase: "下载", Percent: 10, Message: fmt.Sprintf("准备下载 %s ...", asset.Name)})
+
+	// 3. 下载到临时文件（带进度回调）
+	tmpPath, err := downloadToTemp(downloadURL, asset.Size, func(written, total int64) {
+		pct := 10
+		if total > 0 {
+			pct = 10 + int(float64(written)/float64(total)*60)
+		}
+		if pct < 10 {
+			pct = 10
+		}
+		if pct > 70 {
+			pct = 70
+		}
+		msg := fmt.Sprintf("正在下载: %.1f / %.1f MB", float64(written)/1024/1024, float64(total)/1024/1024)
+		setUpdateProgress(UpdateProgress{Running: true, Phase: "下载", Percent: pct, Message: msg})
+	})
 	if err != nil {
 		return fmt.Errorf("下载失败: %v", err)
 	}
 	logUpdate("下载完成 -> %s (%.1f MB)", tmpPath, float64(asset.Size)/1024/1024)
 
 	// 4. 原子替换
+	setUpdateProgress(UpdateProgress{Running: true, Phase: "替换", Percent: 80, Message: "正在替换二进制文件..."})
 	newExe, err := replaceBinary(tmpPath)
 	if err != nil {
 		return fmt.Errorf("替换失败: %v", err)
 	}
 
 	// 5. 自重启
+	setUpdateProgress(UpdateProgress{Running: true, Phase: "重启", Percent: 95, Message: "更新完成，正在重启服务..."})
 	logUpdate("准备重启 -> %s", newExe)
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -284,8 +351,9 @@ func extractRepo(url string) string {
 }
 
 // fetchLatestRelease 按渠道获取目标 release：
-//   stable     -> /releases/latest（最新「正式版」，GitHub 自动排除预发布）
-//   prerelease -> /releases 列表首条（最新「先行版」，包含预发布）
+//
+//	stable     -> /releases/latest（最新「正式版」，GitHub 自动排除预发布）
+//	prerelease -> /releases 列表首条（最新「先行版」，包含预发布）
 func fetchLatestRelease(repo, channel string) (*ghRelease, error) {
 	if channel == config.ChannelPrerelease {
 		return fetchNewestRelease(repo)
@@ -411,7 +479,7 @@ func pickMirror(mirrors []string, originURL string) string {
 	return ""
 }
 
-func downloadToTemp(url string, expectedSize int64) (string, error) {
+func downloadToTemp(url string, expectedSize int64, onProgress func(written, total int64)) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -428,13 +496,19 @@ func downloadToTemp(url string, expectedSize int64) (string, error) {
 		return "", fmt.Errorf("下载 %d", resp.StatusCode)
 	}
 
+	total := expectedSize
+	if resp.ContentLength > 0 {
+		total = resp.ContentLength
+	}
+
 	tmp, err := os.CreateTemp("", "mxgjgt-update-*")
 	if err != nil {
 		return "", err
 	}
 	tmpPath := tmp.Name()
 
-	written, err := io.Copy(tmp, resp.Body)
+	pr := &progressReader{r: resp.Body, total: total, onProgress: onProgress}
+	written, err := io.Copy(tmp, pr)
 	tmp.Close()
 	if err != nil {
 		os.Remove(tmpPath)
@@ -446,6 +520,25 @@ func downloadToTemp(url string, expectedSize int64) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// progressReader 包装 io.Reader，读取时回调进度
+type progressReader struct {
+	r          io.Reader
+	total      int64
+	written    int64
+	onProgress func(written, total int64)
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.r.Read(p)
+	if n > 0 {
+		pr.written += int64(n)
+		if pr.onProgress != nil {
+			pr.onProgress(pr.written, pr.total)
+		}
+	}
+	return n, err
 }
 
 func replaceBinary(tmpPath string) (string, error) {

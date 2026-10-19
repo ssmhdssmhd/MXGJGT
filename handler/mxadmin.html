@@ -183,6 +183,20 @@
   .sysactions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
   .sysactions .empty{margin:0;padding:0}
   .sysactions .spacer{flex:1}
+  /* 更新进度条 */
+  .upd-prog{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fbfaff;margin-top:14px;display:none}
+  .upd-prog.show{display:block}
+  .upd-prog .up-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--brand);margin-bottom:10px}
+  .upd-prog .up-head .phase{color:var(--ink)}
+  .upd-bar{height:12px;background:#ece8f8;border-radius:999px;overflow:hidden;position:relative}
+  .upd-bar .up-fill{height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--deep));border-radius:999px;transition:width .25s ease;position:relative;overflow:hidden}
+  .upd-bar .up-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);animation:up-shine 1.4s linear infinite}
+  @keyframes up-shine{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  .upd-prog .up-meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--sub);margin-top:8px}
+  .upd-prog .up-meta .pct{font-weight:700;color:var(--brand);font-size:13px}
+  .upd-prog .up-msg{font-size:12px;color:var(--sub);margin-top:8px;word-break:break-all;line-height:1.6}
+  .upd-prog.err .up-fill{background:linear-gradient(90deg,#e5484d,#f97316)}
+  .upd-prog.err .up-head{color:var(--err)}
 
   /* 详情弹窗内嵌播放 */
   .player{background:#0b0e17;border-radius:11px;overflow:hidden;margin-bottom:14px}
@@ -430,6 +444,12 @@
                 <button class="btn ghost sm" id="btn-save-channel">切换渠道</button>
               </div>
             </div>
+          </div>
+          <div class="upd-prog" id="update-progress">
+            <div class="up-head"><span class="phase" id="up-phase">更新进度</span></div>
+            <div class="upd-bar"><div class="up-fill" id="up-fill"></div></div>
+            <div class="up-meta"><span id="up-status">准备中...</span><span class="pct" id="up-percent">0%</span></div>
+            <p class="up-msg" id="up-msg"></p>
           </div>
           <div class="sysactions">
             <button class="btn ghost" id="btn-reload">重载配置</button>
@@ -1129,12 +1149,83 @@
   $("#btn-reload").onclick = reloadConf;
   $("#q-reload").onclick = reloadConf;
   $("#btn-update").onclick = function () {
-    $("#update-msg").textContent = "正在更新...（下载 → 替换 → 重启，约 20-40 秒）";
+    var btn = $("#btn-update");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    var prog = $("#update-progress");
+    prog.classList.remove("err");
+    prog.classList.add("show");
+    $("#up-phase").textContent = "准备更新";
+    $("#up-fill").style.width = "0%";
+    $("#up-percent").textContent = "0%";
+    $("#up-status").textContent = "准备中...";
+    $("#up-msg").textContent = "";
+    $("#update-msg").textContent = "";
+
+    var pollTimer = null, restartTimer = null;
+    function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+    function onRestarting() {
+      stopPolling();
+      $("#up-phase").textContent = "服务重启中";
+      $("#up-status").textContent = "更新完成，服务正在重启，请稍候...";
+      $("#update-msg").textContent = "更新完成，服务正在重启（约 10-30 秒），页面将自动刷新";
+      // 轮询 /api/version 检测服务恢复，恢复后刷新页面
+      restartTimer = setInterval(function () {
+        api("/api/version").then(function () {
+          clearInterval(restartTimer);
+          toast("服务已重启，刷新中...");
+          setTimeout(function () { location.reload(); }, 500);
+        }).catch(function () { /* 服务未就绪，继续等 */ });
+      }, 1500);
+    }
+
+    function pollProgress() {
+      api("/api/admin/update/progress").then(function (r) {
+        var d = (r && r.data) || {};
+        var pct = Math.max(0, Math.min(100, parseInt(d.percent, 10) || 0));
+        $("#up-phase").textContent = d.phase || "更新中";
+        $("#up-fill").style.width = pct + "%";
+        $("#up-percent").textContent = pct + "%";
+        $("#up-status").textContent = d.message || ("正在" + (d.phase || "更新") + "...");
+        if (d.error) {
+          $("#up-msg").textContent = d.error;
+          prog.classList.add("err");
+        }
+        if (d.done) {
+          stopPolling();
+          if (d.error) {
+            btn.disabled = false;
+            $("#update-msg").textContent = d.message || d.error;
+          } else {
+            // 无错误但 done：可能已是最新版，直接刷新
+            $("#up-msg").textContent = d.message || "更新已完成";
+            btn.disabled = false;
+          }
+          return;
+        }
+        if (d.phase === "重启" || pct >= 95) {
+          onRestarting();
+        }
+      }).catch(function () {
+        // 连接被掐断 = 服务正在重启
+        if (!prog.classList.contains("err")) onRestarting();
+        else stopPolling();
+      });
+    }
+
     api("/api/update", { method: "POST" })
-      .then(function (r) { $("#update-msg").textContent = r.msg || ""; toast(r.msg || "完成"); })
+      .then(function (r) {
+        $("#update-msg").textContent = r.msg || "已触发更新";
+        pollTimer = setInterval(pollProgress, 600);
+        pollProgress();
+      })
       .catch(function (e) {
-        // 更新成功后服务会自重启，连接可能被掐断
-        $("#update-msg").textContent = "已触发更新（服务正在重启，约 20-40 秒后刷新页面查看）：" + (e.message || "");
+        // 触发请求本身失败（不是重启导致）
+        prog.classList.add("err");
+        $("#up-phase").textContent = "触发失败";
+        $("#up-msg").textContent = e.message || "网络错误";
+        btn.disabled = false;
       });
   };
 

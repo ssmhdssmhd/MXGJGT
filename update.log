@@ -1,3 +1,40 @@
+MXGJGT v0.0.19-dev.1 202610200135
+================================
+
+## 先行版优化：系统更新增加实时进度条 + 自动重启服务
+
+> 需求：先行版「系统 · 更新」中，更新时增加一个进度条显示进度，并且自动重启服务。
+
+### ✨ 新增
+
+**1. 更新进度条（后台可视化）**
+
+- 后台「立即更新」按钮触发后，展示**实时进度条**（带流光动画），显示阶段 + 百分比 + 状态消息
+- 阶段占比：检查更新 0~10% → 下载 10~70% → 替换 70~90% → 重启 90~100%
+- **下载阶段按字节实时推进**：`downloadToTemp` 新增 `progressReader`，每次读取回调 `written/total`，换算成 10~70% 的进度
+- 新增接口 `GET /api/admin/update/progress`：返回 `running / phase / percent / message / error / done`，前端每 600ms 轮询
+
+**2. 异步触发 + 自动重启**
+
+- `ManualUpdate` 改为**异步执行**（goroutine 跑 `DoUpdate`），接口立即返回「已触发更新」，前端轮询进度，不再阻塞等待
+- `DoUpdate` 各阶段通过 `setUpdateProgress` 写入共享状态（`UpdateProgress` + `sync.RWMutex`），供前端读取
+- 更新成功后服务**自动重启**（`execSelf`），前端检测到连接断开或 phase=「重启」后，轮询 `/api/version` 检测服务恢复，恢复后自动刷新页面
+- 失败时进度条变红，显示错误信息，按钮恢复可点击
+
+### 📁 变更文件
+
+```
+modified: service/updater.go    # UpdateProgress 状态 + 异步 ManualUpdate + DoUpdate 进度上报 + downloadToTemp 进度回调 + progressReader
+modified: handler/admin.go      # 新增 handleAdminUpdateProgress
+modified: handler/api.go        # 注册 GET /api/admin/update/progress
+modified: handler/mxadmin.html  # 进度条 UI（流光动画）+ 轮询逻辑 + 自动刷新
+modified: model/version.go      # 0.0.18-dev.1 → 0.0.19-dev.1
+modified: Makefile              # VERSION 0.0.19-dev.1
+modified: README.md             # 更新进度条特性 / 接口 / 版本号
+```
+
+================================
+
 MXGJGT v0.0.18-dev.1 202610200113
 ================================
 

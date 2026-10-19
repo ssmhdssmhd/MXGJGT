@@ -35,6 +35,7 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.GET("/stream", handleAdminPlayStream)
 			admin.GET("/update/check", handleAdminUpdateCheck)
 			admin.POST("/update/channel", handleAdminUpdateChannel)
+			admin.GET("/update/progress", handleAdminUpdateProgress)
 			admin.POST("/site/sync", handleAdminSyncSite)
 			admin.POST("/site", handleAdminAddSite)
 			admin.PUT("/site/:id", handleAdminUpdateSite)
