@@ -32,6 +32,7 @@ var (
 	cleanPaths    []model.CleanPath
 	filterSites   []model.FilterSite
 	overlayRules  []model.AdOverlayRule
+	playerConfig  model.PlayerConfig
 	updateChannel string
 
 	dataDir  string
@@ -155,6 +156,122 @@ func SaveSecurity(sec model.SecurityConfig) error {
 	return os.WriteFile(filepath.Join(dataDir, "security.yaml"), data, 0644)
 }
 
+// ===== 播放器控制面板 =====
+
+// GetPlayer 获取播放器控制面板配置
+func GetPlayer() model.PlayerConfig {
+	mu.RLock()
+	defer mu.RUnlock()
+	return playerConfig
+}
+
+// SavePlayer 保存播放器配置到 data/player.yaml
+func SavePlayer(p model.PlayerConfig) error {
+	normalizePlayer(&p)
+	data, err := yaml.Marshal(p)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	playerConfig = p
+	mu.Unlock()
+	return os.WriteFile(filepath.Join(dataDir, "player.yaml"), data, 0644)
+}
+
+// normalizePlayer 规范化播放器配置：补默认值、裁剪取值范围
+func normalizePlayer(p *model.PlayerConfig) {
+	switch strings.ToLower(strings.TrimSpace(p.AdMode)) {
+	case "manual":
+		p.AdMode = "manual"
+	default:
+		p.AdMode = "smart"
+	}
+	switch strings.ToLower(strings.TrimSpace(p.MaskStyle)) {
+	case "blur":
+		p.MaskStyle = "blur"
+	case "mosaic":
+		p.MaskStyle = "mosaic"
+	default:
+		p.MaskStyle = "cover"
+	}
+	if strings.TrimSpace(p.MaskColor) == "" {
+		p.MaskColor = "#000000"
+	}
+	if p.MaskOpacity < 0 {
+		p.MaskOpacity = 0
+	}
+	if p.MaskOpacity > 1 {
+		p.MaskOpacity = 1
+	}
+	if p.MaskOpacity == 0 && p.MaskStyle == "cover" {
+		p.MaskOpacity = 1 // cover 全透明等于没遮，回退默认
+	}
+	if p.MaskStrength <= 0 {
+		p.MaskStrength = 8
+	}
+	if p.MaskStrength > 20 {
+		p.MaskStrength = 20
+	}
+	switch strings.ToLower(strings.TrimSpace(p.LineStrategy)) {
+	case "quality":
+		p.LineStrategy = "quality"
+	case "lowad":
+		p.LineStrategy = "lowad"
+	case "speed":
+		p.LineStrategy = "speed"
+	default:
+		p.LineStrategy = "smart"
+	}
+	if p.LineTimeoutMS <= 0 {
+		p.LineTimeoutMS = 8000
+	}
+	if p.LineTimeoutMS < 1000 {
+		p.LineTimeoutMS = 1000
+	}
+	if p.LineTimeoutMS > 30000 {
+		p.LineTimeoutMS = 30000
+	}
+	if p.LineConcurrency <= 0 {
+		p.LineConcurrency = 4
+	}
+	if p.LineConcurrency > 16 {
+		p.LineConcurrency = 16
+	}
+	mirrors := make([]string, 0, len(p.Mirrors))
+	seen := map[string]bool{}
+	for _, m := range p.Mirrors {
+		m = strings.TrimRight(strings.TrimSpace(m), "/")
+		if m == "" {
+			continue
+		}
+		if !strings.Contains(m, "://") {
+			m = "https://" + m
+		}
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
+		mirrors = append(mirrors, m)
+	}
+	p.Mirrors = mirrors
+}
+
+// defaultPlayerConfig 播放器控制面板默认值
+func defaultPlayerConfig() model.PlayerConfig {
+	return model.PlayerConfig{
+		AdBlock:         true,
+		AdMode:          "smart",
+		FilterSegments:  true,
+		MaskStyle:       "cover",
+		MaskColor:       "#000000",
+		MaskOpacity:     1,
+		MaskStrength:    8,
+		LineStrategy:    "smart",
+		LineTimeoutMS:   8000,
+		LineConcurrency: 4,
+	}
+}
+
 // ===== 首次启动写模板（仅当文件不存在时） =====
 
 func EnsureDefaults() {
@@ -165,6 +282,7 @@ func EnsureDefaults() {
 	ensureFile(filepath.Join(dataDir, "filter_sites.yaml"), defaultFilterSitesYAML())
 	ensureFile(filepath.Join(dataDir, "ad_overlay.yaml"), defaultOverlayRulesYAML())
 	ensureFile(filepath.Join(dataDir, "updater.yaml"), defaultUpdaterYAML())
+	ensureFile(filepath.Join(dataDir, "player.yaml"), defaultPlayerYAML())
 }
 
 func ensureFile(path, content string) {
@@ -261,6 +379,17 @@ func LoadConfig(dir string) error {
 			overlayRules = rs
 		}
 	}
+
+	// player.yaml —— 播放器控制面板（广告屏蔽 / 智能选线 / 备用入口）
+	playerFile := filepath.Join(dir, "player.yaml")
+	playerConfig = defaultPlayerConfig()
+	if data, err := os.ReadFile(playerFile); err == nil {
+		var p model.PlayerConfig
+		if yaml.Unmarshal(data, &p) == nil {
+			playerConfig = p
+		}
+	}
+	normalizePlayer(&playerConfig)
 
 	// updater.yaml —— 更新渠道（正式版 stable / 先行版 prerelease）
 	updateFile := filepath.Join(dir, "updater.yaml")
@@ -902,5 +1031,38 @@ func defaultUpdaterYAML() string {
 # =============================================
 
 channel: stable
+`
+}
+
+// defaultPlayerYAML 播放器控制面板（后台「播放器控制面板」可保存，无需手工改本文件）
+func defaultPlayerYAML() string {
+	return `# =============================================
+#  MXGJGT — 播放器控制面板
+#  后台「播放器控制面板」保存后写回本文件
+#
+#  ad_block:         广告屏蔽总开关（含插播片段 + 画面遮罩）
+#  ad_mode:          smart=智能屏蔽 / manual=仅手动圈选
+#  filter_segments:  插播片段过滤（去插播）；关闭后仅保留画面遮罩
+#  mask_style:       cover=纯色遮挡 / blur=模糊 / mosaic=马赛克
+#  mask_color:       cover 填充色，如 #000000
+#  mask_opacity:     不透明度 0~1（cover 生效）
+#  mask_strength:    模糊 / 马赛克强度 1~20
+#  line_strategy:    smart=综合推荐 / quality=清晰优先 / lowad=低广告优先 / speed=速度优先
+#  line_timeout_ms:  单线路测速超时（毫秒，1000~30000）
+#  line_concurrency: 并发测速数（1~16）
+#  mirrors:          备用入口域名；生成调用地址时优先使用第一个
+# =============================================
+
+ad_block: true
+ad_mode: smart
+filter_segments: true
+mask_style: cover
+mask_color: "#000000"
+mask_opacity: 1
+mask_strength: 8
+line_strategy: smart
+line_timeout_ms: 8000
+line_concurrency: 4
+mirrors: []
 `
 }

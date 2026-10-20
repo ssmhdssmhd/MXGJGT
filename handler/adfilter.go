@@ -96,6 +96,11 @@ func handleAdminAdOverlayRuleDel(c *gin.Context) {
 // siteName 为该次播放实际命中的资源站名称：绑定到该资源站的规则会**优先自动套用**，
 // 从而无需为每个播放域名手工配置遮罩（「绑定资源站、避免手动遮罩」）
 func resolveAdOverlay(playURL, siteName string) *model.AdOverlayClean {
+	p := config.GetPlayer()
+	// 播放器面板关闭广告屏蔽 → 不再下发任何遮罩
+	if !p.AdBlock {
+		return nil
+	}
 	rule := config.MatchOverlayRule(playURL, siteName)
 	if rule == nil {
 		return nil
@@ -104,6 +109,13 @@ func resolveAdOverlay(playURL, siteName string) *model.AdOverlayClean {
 		RuleID:   rule.ID,
 		RuleName: rule.Name,
 		Regions:  rule.Regions,
+		Mask: &model.AdMaskStyle{
+			Style:    p.MaskStyle,
+			Color:    p.MaskColor,
+			Opacity:  p.MaskOpacity,
+			Strength: p.MaskStrength,
+			Mode:     p.AdMode,
+		},
 	}
 }
 

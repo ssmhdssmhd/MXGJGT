@@ -1,0 +1,28 @@
+# =============================================
+#  MXGJGT — 播放器控制面板
+#  后台「播放器控制面板」保存后写回本文件
+#
+#  ad_block:         广告屏蔽总开关（含插播片段 + 画面遮罩）
+#  ad_mode:          smart=智能屏蔽 / manual=仅手动圈选
+#  filter_segments:  插播片段过滤（去插播）；关闭后仅保留画面遮罩
+#  mask_style:       cover=纯色遮挡 / blur=模糊 / mosaic=马赛克
+#  mask_color:       cover 填充色，如 #000000
+#  mask_opacity:     不透明度 0~1（cover 生效）
+#  mask_strength:    模糊 / 马赛克强度 1~20
+#  line_strategy:    smart=综合推荐 / quality=清晰优先 / lowad=低广告优先 / speed=速度优先
+#  line_timeout_ms:  单线路测速超时（毫秒，1000~30000）
+#  line_concurrency: 并发测速数（1~16）
+#  mirrors:          备用入口域名；生成调用地址时优先使用第一个
+# =============================================
+
+ad_block: true
+ad_mode: smart
+filter_segments: true
+mask_style: cover
+mask_color: "#000000"
+mask_opacity: 1
+mask_strength: 8
+line_strategy: smart
+line_timeout_ms: 8000
+line_concurrency: 4
+mirrors: []

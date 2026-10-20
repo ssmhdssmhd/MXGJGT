@@ -566,6 +566,16 @@ func sampleHash(segURL string, site *model.FilterSite, maxBytes int64) (string, 
 // FilterM3U8 拉取并过滤 m3u8（核心入口）
 // site 为 nil 时使用自动模式（无站点规则：仅做块分析 + 序列连贯性）
 func FilterM3U8(rawURL string, site *model.FilterSite) (*FilterResult, error) {
+	return filterM3U8(rawURL, site, false)
+}
+
+// FilterM3U8NoAd 只做地址补全与代理转发，不剔除广告片段
+// （播放器控制面板关闭「插播片段过滤」时使用：仍走本服务，保持 ST 加密链路）
+func FilterM3U8NoAd(rawURL string, site *model.FilterSite) (*FilterResult, error) {
+	return filterM3U8(rawURL, site, true)
+}
+
+func filterM3U8(rawURL string, site *model.FilterSite, skipAds bool) (*FilterResult, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	base, err := url.Parse(rawURL)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
@@ -575,6 +585,9 @@ func FilterM3U8(rawURL string, site *model.FilterSite) (*FilterResult, error) {
 	siteID := ""
 	if site != nil {
 		siteID = site.ID
+	}
+	if skipAds {
+		siteID += "|raw"
 	}
 	key := filterCacheKey(siteID, rawURL)
 	if _, res, ok := filterCacheGet(key); ok {
@@ -637,7 +650,7 @@ func FilterM3U8(rawURL string, site *model.FilterSite) (*FilterResult, error) {
 	res.Mode = detectModeOf(site)
 
 	// 3. 判定广告
-	if res.Mode != "direct" {
+	if res.Mode != "direct" && !skipAds {
 		ad := map[int]bool{}
 		mark := func(m map[int]bool, reason string) {
 			for i := range m {

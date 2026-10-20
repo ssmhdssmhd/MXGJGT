@@ -42,6 +42,7 @@ type AdOverlayClean struct {
 	RuleID   string            `json:"rule_id,omitempty"`
 	RuleName string            `json:"rule_name,omitempty"`
 	Regions  []AdOverlayRegion `json:"regions"`
+	Mask     *AdMaskStyle      `json:"mask,omitempty"` // 全局遮罩样式（播放器控制面板配置）
 }
 
 // ======== 请求体 ========

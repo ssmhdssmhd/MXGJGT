@@ -292,6 +292,10 @@
           <svg class="i ic" viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
           <span>广告过滤</span>
         </button>
+        <button data-tab="player">
+          <svg class="i ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 9.5l4 2.5-4 2.5z"/></svg>
+          <span>播放器面板</span>
+        </button>
         <button data-tab="settings">
           <svg class="i ic" viewBox="0 0 24 24"><path d="M12 3.5l2 2.2 3-.5.6 3 2.6 1.6-1.6 2.6.5 3-3 .6-2.2 2-2.2-2-3 .5-.6-3L3.5 13l1.6-2.6-.5-3 3-.6z"/><circle cx="12" cy="12" r="2.4"/></svg>
           <span>系统设置</span>
@@ -477,6 +481,130 @@
             <p class="empty">新增规则时可直接<b>粘贴链接自动识别</b>：自动解析匹配域名、推荐<b>绑定资源站</b>（绑定后调用该资源站即自动套用，无需再逐个配域名）并给出候选遮罩区域。</p>
             <div id="overlay-box"></div>
           </div>
+        </section>
+
+        <!-- 播放器控制面板 -->
+        <section id="tab-player" class="card hide">
+          <h2>播放器控制面板 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-refresh-player">刷新</button>
+            <button class="btn primary sm" id="btn-save-player">保存</button>
+          </h2>
+          <p class="empty">参考巨量播放器公开能力整理，只保留服务端可落地的部分：广告屏蔽（插播片段 + 画面遮罩）、智能选线、备用入口、嵌入代码。保存后立即对 <code class="mono">/api/clean</code> 与 <code class="mono">/api/player/config</code> 生效。</p>
+
+          <div class="sysgrid">
+            <div class="syscard">
+              <h4>广告屏蔽</h4>
+              <p class="hint">插播片段由服务端剔除；画面遮罩由播放器按 <code class="mono">ad.mask</code> 下发样式叠加。关闭总开关后两项都不再下发。</p>
+              <div class="row">
+                <div class="field">
+                  <label>广告屏蔽总开关</label>
+                  <select id="pl-ad-block">
+                    <option value="1">开启</option>
+                    <option value="0">关闭</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>屏蔽模式</label>
+                  <select id="pl-ad-mode">
+                    <option value="smart">智能屏蔽（自动规则 + 手动圈选）</option>
+                    <option value="manual">仅手动（只用手动圈选规则）</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>插播片段过滤</label>
+                  <select id="pl-filter-segments">
+                    <option value="1">开启（去插播）</option>
+                    <option value="0">关闭（仅画面遮罩）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row" style="margin-top:10px">
+                <div class="field">
+                  <label>遮罩样式</label>
+                  <select id="pl-mask-style">
+                    <option value="cover">纯色遮挡</option>
+                    <option value="blur">模糊</option>
+                    <option value="mosaic">马赛克</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>填充色（纯色生效）</label>
+                  <input id="pl-mask-color" type="color" value="#000000" style="padding:4px;height:42px">
+                </div>
+                <div class="field">
+                  <label>不透明度 0~1</label>
+                  <input id="pl-mask-opacity" type="number" min="0" max="1" step="0.05" placeholder="1">
+                </div>
+                <div class="field">
+                  <label>模糊 / 马赛克强度</label>
+                  <input id="pl-mask-strength" type="number" min="1" max="20" step="1" placeholder="8">
+                </div>
+              </div>
+              <p class="hint" id="pl-mask-hint" style="margin-top:6px"></p>
+            </div>
+
+            <div class="syscard">
+              <h4>智能选线</h4>
+              <p class="hint">多线路时按策略实测排序：综合推荐兼顾速度 / 清晰度 / 广告占比；清晰优先看分辨率；低广告优先看广告片段占比；速度优先看首屏耗时与下载速度。</p>
+              <div class="field">
+                <label>默认选线策略</label>
+                <select id="pl-line-strategy">
+                  <option value="smart">综合推荐</option>
+                  <option value="quality">清晰优先</option>
+                  <option value="lowad">低广告优先</option>
+                  <option value="speed">速度优先</option>
+                </select>
+              </div>
+              <div class="row" style="margin-top:10px">
+                <div class="field">
+                  <label>单线路超时（毫秒）</label>
+                  <input id="pl-line-timeout" type="number" min="1000" max="30000" step="500" placeholder="8000">
+                </div>
+                <div class="field">
+                  <label>并发测速数</label>
+                  <input id="pl-line-concurrency" type="number" min="1" max="16" step="1" placeholder="4">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="syscard" style="margin-top:14px">
+            <h4>备用入口（镜像域名）</h4>
+            <p class="hint">一行一个，例如 <code class="mono">https://cdn.example.com</code>。配置后 <code class="mono">qcb</code> 与嵌入代码优先使用第一个域名生成，主入口被墙时可直接换域名发布。</p>
+            <textarea class="ta" id="pl-mirrors" rows="3" placeholder="一行一个备用入口域名，留空使用当前访问域名"></textarea>
+          </div>
+
+          <h3 style="margin-top:22px">线路测速 · 智能选线</h3>
+          <p class="empty">每行一条播放地址（m3u8 直链或播放页），按当前策略并发测速并排序；最优线路可直接复制。</p>
+          <textarea class="ta" id="pl-lines" rows="5" placeholder="https://xxx.com/index.m3u8&#10;https://yyy.com/index.m3u8"></textarea>
+          <div class="row" style="margin-top:10px">
+            <button class="btn primary" id="btn-probe-lines" type="button">开始测速</button>
+            <button class="btn ghost" id="btn-copy-best" type="button">复制最优线路</button>
+            <span class="empty" id="pl-lines-summary" style="margin:0;padding:0"></span>
+          </div>
+          <div id="pl-lines-result" style="margin-top:12px"></div>
+
+          <h3 style="margin-top:22px">嵌入代码</h3>
+          <p class="empty">生成 iframe / 苹果CMS 播放器代码；启用 ST 加密时地址里自动带 <code class="mono">st</code> 令牌，真实地址不外泄。</p>
+          <div class="row">
+            <div class="field" style="flex:1;min-width:220px">
+              <label>播放地址 / m3u8 地址</label>
+              <input id="pl-embed-url" placeholder="https://xxx.com/index.m3u8">
+            </div>
+            <div class="field">
+              <label>类型</label>
+              <select id="pl-embed-type">
+                <option value="iframe">iframe 网页</option>
+                <option value="acms">苹果CMS 播放器</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>入口域名（留空=备用入口 / 当前域名）</label>
+              <input id="pl-embed-base" placeholder="https://你的域名">
+            </div>
+            <button class="btn primary" id="btn-embed" type="button">生成代码</button>
+          </div>
+          <div id="pl-embed-result" style="margin-top:12px"></div>
         </section>
 
         <!-- 系统设置 · 路径设置 -->
@@ -725,13 +853,14 @@
   // ===== 侧边栏菜单 =====
   function switchTab(tab) {
     $$(".menu button").forEach(function (x) { x.classList.toggle("on", x.dataset.tab === tab); });
-    ["home", "sites", "maps", "ad-analyze", "filter", "settings", "security", "sys"].forEach(function (t) {
+    ["home", "sites", "maps", "ad-analyze", "filter", "player", "settings", "security", "sys"].forEach(function (t) {
       var el = $("#tab-" + t);
       if (el) el.classList.toggle("hide", t !== tab);
     });
     if (tab === "sys" && !verData.remote_checked) checkUpdate(false);
     if (tab === "home") renderHome();
     if (tab === "filter") switchAdSub("m3u8");
+    if (tab === "player") loadPlayer();
     if (tab === "settings") loadCleanPaths();
     if (tab === "security") loadSecurity();
   }
@@ -748,6 +877,7 @@
       "· 平台映射：设置各官方平台优先使用的资源站\n" +
       "· M3U8 广告分析：粘贴播放链接自动分析广告，直连/无广告对比播放，一键生成规则\n" +
       "· 广告过滤：去插播（M3U8 剔除插播片段）+ 画面遮罩（遮挡烧进画面的广告文字 / 台标）\n" +
+      "· 播放器面板：广告屏蔽总控 / 智能选线测速 / 备用入口 / 嵌入代码生成\n" +
       "· 系统设置：自定义 /api/clean 调用路径\n" +
       "· 安全设置：ST 加密 + 失效（令牌只能回本服务解密，防止接口 / 地址被盗用）\n" +
       "· 系统·更新：查看当前/远程版本，重载配置、检查并更新\n" +
@@ -2075,6 +2205,127 @@
         $("#btn-copy-cu").onclick = function () { copyText($("#sec-cu").value); };
       })
       .catch(function (e) { box.innerHTML = '<p class="err">' + esc(e.message || "网络错误") + "</p>"; });
+  };
+
+  // ===== 播放器控制面板 =====
+  var playerBest = "";
+  function loadPlayer() {
+    api("/api/admin/player").then(function (r) {
+      if (r.code !== 200) { toast(r.msg || "加载失败"); return; }
+      var d = r.data || {};
+      $("#pl-ad-block").value = d.ad_block ? "1" : "0";
+      $("#pl-ad-mode").value = d.ad_mode || "smart";
+      $("#pl-filter-segments").value = d.filter_segments ? "1" : "0";
+      $("#pl-mask-style").value = d.mask_style || "cover";
+      $("#pl-mask-color").value = d.mask_color || "#000000";
+      $("#pl-mask-opacity").value = d.mask_opacity == null ? 1 : d.mask_opacity;
+      $("#pl-mask-strength").value = d.mask_strength || 8;
+      $("#pl-line-strategy").value = d.line_strategy || "smart";
+      $("#pl-line-timeout").value = d.line_timeout_ms || 8000;
+      $("#pl-line-concurrency").value = d.line_concurrency || 4;
+      $("#pl-mirrors").value = (d.mirrors || []).join("\n");
+      updateMaskHint();
+    }).catch(function (e) { toast("加载失败：" + (e.message || "网络错误")); });
+  }
+  function updateMaskHint() {
+    var s = $("#pl-mask-style").value;
+    $("#pl-mask-hint").textContent = s === "cover"
+      ? "纯色遮挡：按填充色 + 不透明度覆盖广告区域；不透明度 1 = 完全遮住。"
+      : (s === "blur" ? "模糊：按强度对广告区域做高斯模糊，仍能透出画面轮廓，观感更自然。" : "马赛克：按强度对广告区域做像素化，适合文字条 / 二维码 / 跑马灯。");
+  }
+  $("#pl-mask-style").onchange = updateMaskHint;
+  $("#btn-refresh-player").onclick = loadPlayer;
+  $("#btn-save-player").onclick = function () {
+    var body = {
+      ad_block: $("#pl-ad-block").value === "1",
+      ad_mode: $("#pl-ad-mode").value,
+      filter_segments: $("#pl-filter-segments").value === "1",
+      mask_style: $("#pl-mask-style").value,
+      mask_color: $("#pl-mask-color").value,
+      mask_opacity: parseFloat($("#pl-mask-opacity").value) || 0,
+      mask_strength: parseInt($("#pl-mask-strength").value, 10) || 8,
+      line_strategy: $("#pl-line-strategy").value,
+      line_timeout_ms: parseInt($("#pl-line-timeout").value, 10) || 8000,
+      line_concurrency: parseInt($("#pl-line-concurrency").value, 10) || 4,
+      mirrors: $("#pl-mirrors").value.split("\n").map(function (x) { return x.trim(); }).filter(Boolean)
+    };
+    api("/api/admin/player", { method: "POST", body: body }).then(function (r) {
+      toast(r.code === 200 ? "播放器配置已保存" : (r.msg || "保存失败"));
+      if (r.code === 200) {
+        var d = r.data || {};
+        $("#pl-mask-opacity").value = d.mask_opacity;
+        $("#pl-mirrors").value = (d.mirrors || []).join("\n");
+      }
+    }).catch(function (e) { toast("保存失败：" + (e.message || "网络错误")); });
+  };
+  function strategyName(s) {
+    return ({ smart: "综合推荐", quality: "清晰优先", lowad: "低广告优先", speed: "速度优先" })[s] || s || "综合推荐";
+  }
+  $("#btn-probe-lines").onclick = function () {
+    var urls = $("#pl-lines").value.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    if (!urls.length) { toast("请先填写线路地址"); return; }
+    var box = $("#pl-lines-result");
+    playerBest = "";
+    $("#pl-lines-summary").textContent = "测速中…";
+    box.innerHTML = '<p class="empty">正在并发测速，请稍候…</p>';
+    api("/api/admin/player/lines", { method: "POST", body: { urls: urls, strategy: $("#pl-line-strategy").value } })
+      .then(function (r) {
+        if (r.code !== 200) { box.innerHTML = '<p class="err">' + esc(r.msg || "测速失败") + "</p>"; $("#pl-lines-summary").textContent = ""; return; }
+        var d = r.data || {}, list = d.results || [];
+        playerBest = d.best || "";
+        $("#pl-lines-summary").textContent = "策略：" + strategyName(d.strategy) + " · 共 " + (d.total || list.length) + " 条" + (playerBest ? " · 最优已就绪" : " · 无可用线路");
+        var h = ["<table><thead><tr><th>#</th><th>状态</th><th>清晰度</th><th>耗时</th><th>速度</th><th>片段</th><th>广告</th><th>得分</th><th>地址</th></tr></thead><tbody>"];
+        list.forEach(function (x) {
+          h.push("<tr>" +
+            "<td>" + (x.ok ? x.rank : "-") + "</td>" +
+            "<td>" + (x.ok ? '<span style="color:var(--ok)">可用</span>' : '<span style="color:var(--err)">失败</span>') + "</td>" +
+            "<td>" + (x.width ? x.width + "×" + x.height : "-") + "</td>" +
+            "<td>" + (x.latency_ms || 0) + " ms</td>" +
+            "<td>" + (x.speed_kbps ? x.speed_kbps.toFixed(1) + " KB/s" : "-") + "</td>" +
+            "<td>" + (x.segments || 0) + "</td>" +
+            "<td>" + (x.ad_segments || 0) + (x.ad_ratio ? "（" + Math.round(x.ad_ratio * 100) + "%）" : "") + "</td>" +
+            "<td>" + (x.score ? x.score.toFixed(1) : "-") + "</td>" +
+            "<td style=\"max-width:280px;word-break:break-all\">" + esc(x.url) +
+              (x.error ? "<br><span style=\"color:var(--err)\">" + esc(x.error) + "</span>" : "") + "</td>" +
+            "</tr>");
+        });
+        h.push("</tbody></table>");
+        box.innerHTML = h.join("");
+      })
+      .catch(function (e) {
+        box.innerHTML = '<p class="err">' + esc(e.message || "网络错误") + "</p>";
+        $("#pl-lines-summary").textContent = "";
+      });
+  };
+  $("#btn-copy-best").onclick = function () {
+    if (!playerBest) { toast("请先测速，或本次没有可用线路"); return; }
+    copyText(playerBest);
+  };
+  $("#btn-embed").onclick = function () {
+    var u = $("#pl-embed-url").value.trim();
+    if (!u) { toast("请填写播放地址或 m3u8 地址"); return; }
+    var box = $("#pl-embed-result");
+    box.innerHTML = '<p class="empty">生成中…</p>';
+    api("/api/admin/player/embed", {
+      method: "POST",
+      body: { url: u, type: $("#pl-embed-type").value, base: $("#pl-embed-base").value.trim() }
+    }).then(function (r) {
+      if (r.code !== 200) { box.innerHTML = '<p class="err">' + esc(r.msg || "生成失败") + "</p>"; return; }
+      var d = r.data || {};
+      box.innerHTML = '<div class="syscard">' +
+        '<div class="kv rows">' +
+        "<div><b>入口地址</b><span style=\"word-break:break-all\">" + esc(d.clean_url) + "</span></div>" +
+        (d.token ? "<div><b>st 令牌</b><span style=\"word-break:break-all\">" + esc(d.token) + "</span></div>" : "") +
+        "</div>" +
+        '<div class="field" style="margin-top:12px"><label>嵌入代码</label>' +
+        '<textarea class="ta" rows="9" readonly id="pl-embed-code">' + esc(d.code) + "</textarea></div>" +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="btn ghost sm" id="btn-copy-embed" type="button">复制代码</button>' +
+        '<a class="btn ghost sm" href="' + esc(d.clean_url) + '" target="_blank" rel="noopener">新窗口验证</a>' +
+        "</div>" +
+        '<p class="hint" style="margin-top:10px">' + esc(d.note) + "</p></div>";
+      $("#btn-copy-embed").onclick = function () { copyText($("#pl-embed-code").value); };
+    }).catch(function (e) { box.innerHTML = '<p class="err">' + esc(e.message || "网络错误") + "</p>"; });
   };
 
   checkAuth();

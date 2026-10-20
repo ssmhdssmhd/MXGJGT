@@ -23,6 +23,8 @@ func RegisterRoutes(r *gin.Engine) {
 		// （用户可在后台自定义调用路径，其它未知路径统一返回 nginx 风格伪装 404）
 		api.GET("/search/", handleSearch)
 		api.GET("/version", handleVersion)
+		// 播放器运行时配置（公开）：广告屏蔽 / 遮罩样式 / 选线策略 / ST 状态
+		api.GET("/player/config", handlePlayerConfig)
 
 		// 后台管理接口：需登录态
 		admin := api.Group("/admin", adminAuth())
@@ -63,6 +65,12 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.GET("/security", handleAdminSecurityGet)
 			admin.POST("/security", handleAdminSecuritySave)
 			admin.POST("/security/st-token", handleAdminSecuritySTToken)
+
+			// 播放器控制面板：广告屏蔽 / 智能选线 / 备用入口 / 嵌入代码
+			admin.GET("/player", handleAdminPlayerGet)
+			admin.POST("/player", handleAdminPlayerSave)
+			admin.POST("/player/lines", handleAdminPlayerProbeLines)
+			admin.POST("/player/embed", handleAdminPlayerEmbed)
 
 			// 广告过滤 · 画面遮罩（内嵌广告 / 贴片）
 			admin.GET("/adfilter/overlays", handleAdminAdOverlayRules)
@@ -240,7 +248,14 @@ func handleM3U8FilterURL(c *gin.Context, target string) {
 	}
 
 	site := config.MatchFilterSite(m3u8URL)
-	res, err := service.FilterM3U8(m3u8URL, site)
+	var res *service.FilterResult
+	var err error
+	if config.GetPlayer().FilterSegments {
+		res, err = service.FilterM3U8(m3u8URL, site)
+	} else {
+		// 播放器面板关闭「插播片段过滤」：只做代理与地址补全，仍隐藏真实地址
+		res, err = service.FilterM3U8NoAd(m3u8URL, site)
+	}
 	if err != nil {
 		service.AddFilterRecord(model.FilterRecord{
 			Time: time.Now().Format("2006-01-02 15:04:05"), URL: m3u8URL,
@@ -305,14 +320,28 @@ func buildCleanURL(c *gin.Context, playURL, typ string) string {
 	if playURL == "" {
 		return ""
 	}
-	base := publicBase(c) + config.PrimaryCleanPath() + "/"
+	// 备用入口优先：配置了镜像域名时，生成地址用第一个镜像（对外分享更稳定）
+	base := publicBase(c)
+	if p := config.GetPlayer(); len(p.Mirrors) > 0 {
+		base = p.Mirrors[0]
+	}
+	return buildCleanURLBase(base, playURL, typ)
+}
+
+// buildCleanURLBase 指定入口域名生成清洗地址
+func buildCleanURLBase(base, playURL, typ string) string {
+	playURL = strings.TrimSpace(playURL)
+	if playURL == "" || base == "" {
+		return ""
+	}
+	base = strings.TrimRight(base, "/")
 	sec := config.GetSecurity()
 	if sec.STEnabled {
 		if tk, err := service.EncodeST(playURL, typ, sec.STSecret, sec.STExpire); err == nil && tk != "" {
-			return base + "?st=" + url.QueryEscape(tk)
+			return base + config.PrimaryCleanPath() + "/?st=" + url.QueryEscape(tk)
 		}
 	}
-	return base + "?type=" + url.QueryEscape(typ) + "&url=" + url.QueryEscape(playURL)
+	return base + config.PrimaryCleanPath() + "/?type=" + url.QueryEscape(typ) + "&url=" + url.QueryEscape(playURL)
 }
 
 // handleSearch GET /api/search/?wd=&episode=

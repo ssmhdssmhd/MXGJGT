@@ -141,6 +141,7 @@ curl http://127.0.0.1:9991/api/version
 | 🔗 平台映射 | 官方平台 → 优先资源站 |
 | 🔍 M3U8 广告分析 | 独立分析页：粘贴播放页 / m3u8 → 自动解析、探测插播广告（字幕 / 贴片）、生成去广告列表；**双播放器对比**（直连原始 vs 无广告过滤后）、TS 片段明细表、原始 / 过滤后 m3u8 对比、一键生成过滤规则 |
 | 🚫 广告过滤 | 一级菜单，子页签统管两类去广告：**去插播（M3U8）** 与 **画面遮罩（内嵌广告）**（站点/区域规则 CRUD + 探测 / 测试 / 调用日志 / 16:9 实时预览；画面遮罩支持**粘贴链接智能识别**与**绑定资源站**） |
+| 🎬 播放器面板 | **广告屏蔽总控**（插播片段 + 画面遮罩、智能/仅手动、遮罩样式）+ **智能选线**（线路并发测速、四策略打分排序）+ **备用入口**（镜像域名优先）+ **嵌入代码生成**（iframe / 苹果CMS，自动带 ST 令牌） |
 | 🛣️ 系统设置 | 路径设置：自定义 `/api/clean/` 调用路径 |
 | 🛡️ 安全设置 | **ST 加密 + 失效**：令牌 AES-256-GCM 加密、只保存在服务端；开启后 clean 接口只接受 `st` 令牌，裸 `url` 调用直接 403，令牌到期自动失效；支持密钥重置与令牌自测；含 API Key 配置 |
 | ⚙️ 系统 · 更新 | 版本 / 构建时间 / 更新仓库 / 定时更新状态 |
@@ -159,6 +160,10 @@ curl http://127.0.0.1:9991/api/version
 | 🚫 广告过滤 · 去插播（M3U8） | 站点规则 CRUD（解析方式 / 检测方式 / 索引模式 / 码率 / 匹配前缀与正则 / 时长指纹 / 片段级正则）；**新增规则支持「播放链接自动分析填入」**：粘贴资源站播放链接 → 自动解析 m3u8 + 探测广告 → 一键填表；所有下拉项以「英文(中文)」标注，如 `auto(自动（推荐）)`；「探测」给出广告区间与指纹建议、「测试」返回保留/剔除与过滤后播放列表、「调用日志」查看最近 200 次去插播调用 |
 | 🖼️ 广告过滤 · 画面遮罩（内嵌广告） | 画面遮罩规则 CRUD（名称 / 启用 / 排序 / 匹配前缀与正则 / **绑定资源站** / 备注）；每条规则含一至多个**遮罩区域**（`x`/`y`=左上角、`w`/`h`=宽高，均为相对比例 `0~1`，跨分辨率跨剧通用；模式 `cover(纯色遮挡)` / `blur(模糊)`、颜色、透明度、备注），弹窗内置 **16:9 实时预览**，所见即所得；**新增规则支持「粘贴链接自动识别」**：自动解析匹配域名、推荐绑定资源站、抓帧识别广告位置 / 大小并给出候选区域一键填入；命中播放域名**或绑定的资源站**后在 `/api/clean` 响应里以 `ad` 字段下发，播放器按相对坐标叠加遮罩（零转码、零带宽、秒级生效） |
 | 🛣️ 系统设置 · 路径设置 | 增删多条调用路径（`http://` / `https://`），任一启用路径命中即生效；全部停用时回退默认 `/api/clean` |
+| 🎬 播放器面板 · 广告屏蔽 | **总开关**联动插播片段过滤与画面遮罩（关闭后两项都不下发）；模式 `smart(智能屏蔽)` / `manual(仅手动圈选)`；插播过滤关闭时仍走本服务转发以保持 ST 链路；遮罩样式 `cover(纯色)` / `blur(模糊)` / `mosaic(马赛克)`，可调填充色、不透明度、强度，随 `ad.mask` 下发 |
+| 🎬 播放器面板 · 智能选线 | 多线路并发实测：可用性 / 响应耗时 / 清晰度 / 首片下载速度 / 片段数 / 广告占比，按 `smart` / `quality` / `lowad` / `speed` 四策略打分（0~100）排序，标注最优线路并支持一键复制；可配置超时与并发数 |
+| 🎬 播放器面板 · 备用入口 | 一行一个镜像域名，保存时自动补协议并去重；`qcb` 与嵌入代码优先使用第一个镜像生成地址，主入口被墙时直接换域名发布 |
+| 🎬 播放器面板 · 嵌入代码 | 生成 `iframe(网页嵌入)` / `acms(苹果CMS 播放器)` 代码；启用 ST 时自动带 `st` 令牌（真实地址不外泄，到期失效），可指定入口域名 |
 | 🛡️ 安全设置 · ST 加密 + 失效 | 令牌内容为「真实地址 + 类型 + 过期时间」，使用 **AES-256-GCM** 加密，密钥仅保存在服务端（`data/security.yaml`），客户端只拿到密文 `st=...`，**解密必须回到本服务**；开启后 clean 接口只接受 `st`，裸 `url` 调用返回 403，令牌到期自动失效、篡改即拒；支持一键重置密钥（旧令牌立即失效）与**令牌自测**（生成令牌 / 完整地址 / 过期时间） |
 | ⚙️ 系统 / 更新 | 查看 当前版本 / 远程最新版本 / 更新渠道 / 构建时间 / 更新仓库 / 定时更新状态（**分卡片布局**：版本信息 + 更新渠道，操作按钮统一在底部）；**「更新渠道」下拉可切换正式版 / 先行版并保存**；「检查更新」只查不更、「立即更新」触发异步更新并展示**实时进度条**（检查→下载→替换→重启），服务自重启后自动检测恢复并刷新页面（仅在远程版本更高时执行） |
 
@@ -203,7 +208,8 @@ curl http://127.0.0.1:9991/api/version
   "ad":   {
             "rule_id":   "jijiplay-hud",
             "rule_name": "吉吉资源-去内嵌广告",
-            "regions": [ { "x": 0.05, "y": 0.02, "w": 0.3, "h": 0.1, "mode": "cover", "color": "#000000", "opacity": 1, "label": "左上角台标" } ]
+            "regions": [ { "x": 0.05, "y": 0.02, "w": 0.3, "h": 0.1, "mode": "cover", "color": "#000000", "opacity": 1, "label": "左上角台标" } ],
+            "mask":    { "style": "cover", "color": "#000000", "opacity": 1, "strength": 8, "mode": "smart" }
           },
   "msg":  "https://svip.jijiplay1.com/watch/xxxx",
   "time": "2026-10-18 12:00:00",
@@ -248,6 +254,10 @@ curl http://127.0.0.1:9991/api/version
 ### `GET /api/version`
 
 返回当前版本、构建信息、更新配置，以及当前更新渠道 `channel`（`stable` / `prerelease`）。
+
+### `GET /api/player/config`
+
+播放器运行时配置（公开、免登录）：广告屏蔽开关 / 屏蔽模式 / 插播片段过滤 / 遮罩样式 `mask` / 选线策略 / 调用路径 `clean_path` / ST 状态 `st_enabled`、`st_expire`。
 
 ### `POST /api/update`
 
@@ -296,6 +306,10 @@ curl http://127.0.0.1:9991/api/version
 | GET | `/api/admin/security` | 查看安全设置（ST 开关 / 有效期 / 密钥脱敏 / API Key） |
 | POST | `/api/admin/security` | 保存安全设置（`st_enabled` / `st_expire` / `api_key`；`reset_secret=true` 重新生成密钥） |
 | POST | `/api/admin/security/st-token` | 用当前密钥为指定地址生成 ST 令牌（`url` / `type`），返回 `token` / `clean_url` / `expire_at` |
+| GET | `/api/admin/player` | 读取播放器控制面板配置（广告屏蔽 / 遮罩样式 / 选线策略 / 备用入口） |
+| POST | `/api/admin/player` | 保存播放器配置（字段可部分提交，保存后立即生效并写回 `data/player.yaml`） |
+| POST | `/api/admin/player/lines` | **线路测速**（`urls` / `strategy`）：并发实测并按策略打分排序，返回 `strategy / total / best / results` |
+| POST | `/api/admin/player/embed` | **生成嵌入代码**（`url` / `type=iframe\|acms` / `base`），返回 `clean_url / token / code / iframe / acms / note` |
 | POST | `/api/admin/reload` | 热重载配置 |
 
 > `id` 支持资源站 ID 或名称。未找到返回 `404`；测试/同步失败返回 `code: 400` + 原因。
@@ -314,8 +328,9 @@ MXGJGT/
 │   ├── adminauth.go        # 网页后台登录鉴权 + 会话
 │   ├── adminassets.go      # 后台 logo / favicon / 侧边栏徽标（go:embed 内嵌）
 │   ├── adfilter.go         # 广告过滤 · 画面遮罩（内嵌广告）后台 API（CRUD + clean 下发）
+│   ├── player.go           # 播放器控制面板后台 API（配置 / 线路测速 / 嵌入代码 / 运行时配置）
 │   ├── assets/             # 内嵌静态资源（logo.png / favicon.png / logo-mark.png / hls.min.js）
-│   ├── mxadmin.html        # 网页后台页面（侧边栏仪表盘：首页 / 资源站 / 映射 / 广告过滤 / 系统设置 / 系统·更新）
+│   ├── mxadmin.html        # 网页后台页面（侧边栏仪表盘：首页 / 资源站 / 映射 / 广告过滤 / 播放器面板 / 系统设置 / 系统·更新）
 │   └── version.go          # 版本兼容导出
 ├── service/                # 业务逻辑
 │   ├── parser.go           # 官方网站识别 + 影视名/集数提取
@@ -324,15 +339,17 @@ MXGJGT/
 │   ├── resource.go         # 资源站搜索 + 苹果CMS 采集
 │   ├── acms.go             # 苹果CMS 接口自动分析
 │   ├── filter.go           # 去插播核心引擎（解析 / 广告识别原语 / 码率选择 / 重写 / 缓存 / 日志）
+│   ├── line.go             # 线路测速与智能选线（清晰度解析 / 分片测速 / 广告占比 / 多策略打分）
 │   ├── overlay_detect.go   # 画面遮罩智能识别（无头浏览器抓帧 + 纯 Go 边缘密度启发式候选区域检测）
 │   ├── cache.go            # 搜索结果缓存
 │   └── updater.go          # 自动更新（GitHub Releases 下载 + 原子替换 + 自重启）
 ├── config/
-│   └── config.go           # 配置加载 / 热加载 / 持久化（含 cleanpaths / filter_sites / ad_overlay）
+│   └── config.go           # 配置加载 / 热加载 / 持久化（含 cleanpaths / filter_sites / ad_overlay / player）
 ├── model/
 │   ├── types.go            # 数据结构（Response 含 qcb / ad）
 │   ├── filter.go           # 广告过滤数据结构
 │   ├── adfilter.go         # 画面遮罩（内嵌广告）数据结构
+│   ├── player.go           # 播放器控制面板数据结构
 │   └── version.go          # 版本常量
 ├── utils/
 │   └── utils.go            # HTTP 工具
@@ -344,6 +361,7 @@ MXGJGT/
 │   ├── filter_sites.yaml   # M3U8 广告过滤站点规则
 │   ├── ad_overlay.yaml     # 画面遮罩（内嵌广告）规则
 │   ├── security.yaml       # 安全设置（ST 加密密钥 / 有效期 / API Key，后台保存后生成）
+│   ├── player.yaml         # 播放器控制面板（广告屏蔽 / 遮罩样式 / 选线策略 / 备用入口）
 │   └── updater.yaml        # 更新渠道（stable 正式版 / prerelease 先行版）
 ├── static/
 │   └── 404.html            # 可选的自定义伪装 HTML（默认内置 nginx 风格 404）
@@ -401,6 +419,24 @@ browser:
 channel: stable   # stable=正式版（跟随 main 正式发布）/ prerelease=先行版（跟随开发分支预发布）
 ```
 
+### `data/player.yaml`
+
+播放器控制面板（首次启动自动生成，后台「播放器面板」保存后自动写回）：
+
+```yaml
+ad_block: true           # 广告屏蔽总开关（插播片段 + 画面遮罩）
+ad_mode: smart           # smart=智能屏蔽 / manual=仅手动圈选
+filter_segments: true    # 插播片段过滤（去插播）；关闭后仅保留画面遮罩
+mask_style: cover        # cover=纯色遮挡 / blur=模糊 / mosaic=马赛克
+mask_color: "#000000"    # cover 填充色
+mask_opacity: 1          # 不透明度 0~1（cover 生效）
+mask_strength: 8         # 模糊 / 马赛克强度 1~20
+line_strategy: smart     # smart=综合推荐 / quality=清晰优先 / lowad=低广告优先 / speed=速度优先
+line_timeout_ms: 8000    # 单线路测速超时（1000~30000）
+line_concurrency: 4      # 并发测速数（1~16）
+mirrors: []              # 备用入口域名；生成调用地址时优先使用第一个
+```
+
 ### `data/sites.yaml`
 
 配置你的资源站搜索源：
@@ -439,12 +475,12 @@ channel: stable   # stable=正式版（跟随 main 正式发布）/ prerelease=�
 git tag v0.0.21 && git push origin v0.0.21
 
 # 先行版（prerelease 渠道）— 开发分支
-git tag v0.0.21-dev.1 && git push origin v0.0.21-dev.1
+git tag v0.0.21-dev.2 && git push origin v0.0.21-dev.2
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`
 - 产物自动打包 `zip` + `SHA256.txt`，挂到 GitHub Release
-- **版本号含 `-` 后缀的 tag（如 `v0.0.21-dev.1`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
+- **版本号含 `-` 后缀的 tag（如 `v0.0.21-dev.2`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
 - 版本号经 `-ldflags -X mxgjgt/model.Version=` 注入
 
 ---
