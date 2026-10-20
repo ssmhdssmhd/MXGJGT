@@ -4,6 +4,6 @@ package model
 // 先行版（dev 分支）带 -dev.N 预发布后缀；正式版从 dev 合并后去掉后缀发布
 // 构建时通过 -ldflags "-X mxgjgt/model.Version=x.y.z" 注入
 var (
-	Version   = "0.0.20-dev.1"
-	BuildTime = "2026-10-19T20:06:00Z"
+	Version   = "0.0.21-dev.1"
+	BuildTime = "2026-10-20T14:28:00Z"
 )

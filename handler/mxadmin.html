@@ -296,6 +296,10 @@
           <svg class="i ic" viewBox="0 0 24 24"><path d="M12 3.5l2 2.2 3-.5.6 3 2.6 1.6-1.6 2.6.5 3-3 .6-2.2 2-2.2-2-3 .5-.6-3L3.5 13l1.6-2.6-.5-3 3-.6z"/><circle cx="12" cy="12" r="2.4"/></svg>
           <span>系统设置</span>
         </button>
+        <button data-tab="security">
+          <svg class="i ic" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.3-2.9 7.4-7 9.5-4.1-2.1-7-5.2-7-9.5V6z"/><path d="M9.2 12l1.9 1.9 3.7-3.7"/></svg>
+          <span>安全设置</span>
+        </button>
         <button data-tab="sys">
           <svg class="i ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/></svg>
           <span>系统 · 更新</span>
@@ -487,6 +491,70 @@
           <p class="empty" style="margin-top:12px">去插播地址格式：<code class="mono">该路径/?type=m3u8&amp;url=&lt;播放地址&gt;</code>（由 /api/clean 返回 JSON 里的 <code class="mono">qcb</code> 字段给出）。</p>
         </section>
 
+        <!-- 安全设置 · ST 加密 + 失效 -->
+        <section id="tab-security" class="card hide">
+          <h2>安全设置 · ST 加密 + 失效 <span class="spacer"></span>
+            <button class="btn ghost sm" id="btn-refresh-security">刷新</button>
+            <button class="btn primary sm" id="btn-save-security">保存</button>
+          </h2>
+          <p class="empty">开启后接口不再返回真实播放地址，而是下发给客户端 <code class="mono">st=</code> 加密令牌；<b>解密只能回到本服务完成</b>，别人即使拿到链接也拿不到真实地址，且令牌到期自动失效，防止接口 / 地址被盗用。</p>
+
+          <div class="sysgrid">
+            <div class="syscard">
+              <h4>ST 加密 + 失效</h4>
+              <p class="hint">令牌内容为「真实地址 + 类型 + 过期时间」，使用 AES-256-GCM 加密。密钥只保存在服务端，客户端必须带 <code class="mono">st</code> 回到本服务才能解密播放。</p>
+              <div class="row">
+                <div class="field">
+                  <label>启用 ST 加密</label>
+                  <select id="sec-st-enabled">
+                    <option value="0">关闭（明文 url，兼容旧客户端）</option>
+                    <option value="1">开启（clean 接口只接受 st 令牌）</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>令牌有效期（秒，0 = 永久）</label>
+                  <input id="sec-st-expire" type="number" min="0" step="10" placeholder="300">
+                </div>
+              </div>
+              <div class="field" style="margin-top:12px">
+                <label>加密密钥（服务端保存，仅脱敏展示）</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                  <input id="sec-st-secret" readonly placeholder="保存后自动生成" style="flex:1;min-width:180px">
+                  <button class="btn ghost sm" id="btn-reset-secret" type="button">重置密钥</button>
+                </div>
+              </div>
+              <p class="hint" style="margin-top:8px">重置密钥后，此前生成的所有 st 令牌立即失效（客户端需重新获取地址）。</p>
+            </div>
+
+            <div class="syscard">
+              <h4>接口密钥（API Key）</h4>
+              <p class="hint">用于 <code class="mono">/api/update</code> 手动更新鉴权；留空表示不鉴权。</p>
+              <div class="field">
+                <label>X-API-Key / ?key=</label>
+                <input id="sec-api-key" placeholder="留空 = 无需鉴权">
+              </div>
+            </div>
+          </div>
+
+          <h3 style="margin-top:20px">令牌自测</h3>
+          <p class="empty">用当前密钥为一条地址生成 st 令牌，并给出完整调用地址，便于对接验证（真实地址不会出现在明文参数里）。</p>
+          <div class="row">
+            <div class="field">
+              <label>播放地址 / m3u8 地址</label>
+              <input id="sec-test-url" placeholder="https://xxx.com/index.m3u8">
+            </div>
+            <div class="field">
+              <label>类型</label>
+              <select id="sec-test-type">
+                <option value="m3u8">m3u8（去插播）</option>
+                <option value="json">json（官替清洗）</option>
+              </select>
+            </div>
+            <button class="btn primary" id="btn-sec-gen" type="button">生成令牌</button>
+          </div>
+          <div id="sec-test-result" style="margin-top:12px"></div>
+        </section>
+
         <!-- 系统 -->
         <section id="tab-sys" class="card hide">
           <h2>系统 · 更新 <span class="spacer"></span>
@@ -657,7 +725,7 @@
   // ===== 侧边栏菜单 =====
   function switchTab(tab) {
     $$(".menu button").forEach(function (x) { x.classList.toggle("on", x.dataset.tab === tab); });
-    ["home", "sites", "maps", "ad-analyze", "filter", "settings", "sys"].forEach(function (t) {
+    ["home", "sites", "maps", "ad-analyze", "filter", "settings", "security", "sys"].forEach(function (t) {
       var el = $("#tab-" + t);
       if (el) el.classList.toggle("hide", t !== tab);
     });
@@ -665,6 +733,7 @@
     if (tab === "home") renderHome();
     if (tab === "filter") switchAdSub("m3u8");
     if (tab === "settings") loadCleanPaths();
+    if (tab === "security") loadSecurity();
   }
   $$(".menu button").forEach(function (b) {
     b.addEventListener("click", function () { switchTab(b.dataset.tab); });
@@ -677,8 +746,10 @@
       "· 首页：总览统计与快捷入口\n" +
       "· 资源站管理：新增/编辑/测试/搜索/同步资源站\n" +
       "· 平台映射：设置各官方平台优先使用的资源站\n" +
+      "· M3U8 广告分析：粘贴播放链接自动分析广告，直连/无广告对比播放，一键生成规则\n" +
       "· 广告过滤：去插播（M3U8 剔除插播片段）+ 画面遮罩（遮挡烧进画面的广告文字 / 台标）\n" +
       "· 系统设置：自定义 /api/clean 调用路径\n" +
+      "· 安全设置：ST 加密 + 失效（令牌只能回本服务解密，防止接口 / 地址被盗用）\n" +
       "· 系统·更新：查看当前/远程版本，重载配置、检查并更新\n" +
       "· 顶部「关键词搜索」：在已启用的资源站中全局搜索剧集\n" +
       "· 详情弹窗内点「内嵌播放」可直接观看");
@@ -1936,6 +2007,75 @@
   }
   $("#btn-refresh-paths").onclick = loadCleanPaths;
   $("#btn-save-paths").onclick = saveCleanPaths;
+
+  // ===== 安全设置 · ST 加密 + 失效 =====
+  var secResetSecret = false;
+  function loadSecurity() {
+    api("/api/admin/security").then(function (r) {
+      if (r.code !== 200) { toast(r.msg || "加载失败"); return; }
+      var d = r.data || {};
+      secResetSecret = false;
+      $("#sec-st-enabled").value = d.st_enabled ? "1" : "0";
+      $("#sec-st-expire").value = d.st_expire || 0;
+      $("#sec-st-secret").value = d.st_secret_mask || "";
+      $("#sec-api-key").value = d.api_key || "";
+    }).catch(function (e) { toast("加载失败：" + (e.message || "网络错误")); });
+  }
+  $("#btn-refresh-security").onclick = function () { secResetSecret = false; loadSecurity(); };
+  $("#btn-reset-secret").onclick = function () {
+    if (!confirm("重置后，此前生成的所有 st 令牌立即失效，确定继续？")) return;
+    secResetSecret = true;
+    $("#sec-st-secret").value = "保存后生成新密钥…";
+    toast("已标记重置，点「保存」后生效");
+  };
+  $("#btn-save-security").onclick = function () {
+    var body = {
+      api_key: $("#sec-api-key").value.trim(),
+      st_enabled: $("#sec-st-enabled").value === "1",
+      st_expire: parseInt($("#sec-st-expire").value, 10) || 0,
+      reset_secret: secResetSecret
+    };
+    api("/api/admin/security", { method: "POST", body: body }).then(function (r) {
+      toast(r.code === 200 ? "安全设置已保存" : (r.msg || "保存失败"));
+      if (r.code === 200) {
+        var d = r.data || {};
+        secResetSecret = false;
+        $("#sec-st-secret").value = d.st_secret_mask || "";
+      }
+    }).catch(function (e) { toast("保存失败：" + (e.message || "网络错误")); });
+  };
+  $("#btn-sec-gen").onclick = function () {
+    var u = $("#sec-test-url").value.trim();
+    if (!u) { toast("请填写要加密的地址"); return; }
+    var box = $("#sec-test-result");
+    box.innerHTML = '<p class="empty">生成中…</p>';
+    api("/api/admin/security/st-token", { method: "POST", body: { url: u, type: $("#sec-test-type").value } })
+      .then(function (r) {
+        if (r.code !== 200) { box.innerHTML = '<p class="err">' + esc(r.msg) + "</p>"; return; }
+        var d = r.data || {};
+        var expire = d.expire > 0
+          ? (d.expire + " 秒后失效（" + new Date((d.expire_at || 0) * 1000).toLocaleString() + "）")
+          : "永久有效";
+        box.innerHTML =
+          '<div class="syscard" style="margin-top:4px">' +
+          '<div class="kv rows">' +
+          "<div><b>类型</b><span>" + esc(d.type) + "</span></div>" +
+          "<div><b>有效期</b><span>" + esc(expire) + "</span></div>" +
+          "</div>" +
+          '<div class="field" style="margin-top:12px"><label>st 令牌（加密密文）</label>' +
+          '<textarea class="ta" rows="3" readonly id="sec-tk">' + esc(d.token) + "</textarea></div>" +
+          '<div class="field"><label>完整调用地址</label>' +
+          '<textarea class="ta" rows="2" readonly id="sec-cu">' + esc(d.clean_url) + "</textarea></div>" +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button class="btn ghost sm" id="btn-copy-tk" type="button">复制令牌</button>' +
+          '<button class="btn ghost sm" id="btn-copy-cu" type="button">复制地址</button>' +
+          '<a class="btn ghost sm" href="' + esc(d.clean_url) + '" target="_blank" rel="noopener">新窗口验证</a>' +
+          "</div></div>";
+        $("#btn-copy-tk").onclick = function () { copyText($("#sec-tk").value); };
+        $("#btn-copy-cu").onclick = function () { copyText($("#sec-cu").value); };
+      })
+      .catch(function (e) { box.innerHTML = '<p class="err">' + esc(e.message || "网络错误") + "</p>"; });
+  };
 
   checkAuth();
 })();

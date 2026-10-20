@@ -59,6 +59,11 @@ func RegisterRoutes(r *gin.Engine) {
 			admin.GET("/cleanpaths", handleAdminCleanPaths)
 			admin.POST("/cleanpaths", handleAdminSaveCleanPaths)
 
+			// 安全设置 · ST 加密 + 失效（防止接口 / 地址被盗用）
+			admin.GET("/security", handleAdminSecurityGet)
+			admin.POST("/security", handleAdminSecuritySave)
+			admin.POST("/security/st-token", handleAdminSecuritySTToken)
+
 			// 广告过滤 · 画面遮罩（内嵌广告 / 贴片）
 			admin.GET("/adfilter/overlays", handleAdminAdOverlayRules)
 			admin.POST("/adfilter/overlay", handleAdminAdOverlayRuleAdd)
@@ -99,16 +104,38 @@ func registerAdminUI(r *gin.Engine) {
 
 // ========= 核心清洗接口 =========
 
-// handleClean GET /api/clean/?url=[&wd=剧名&episode=第X集]
+// handleClean GET /api/clean/?url=[&wd=剧名&episode=第X集] 或 ?st=<加密令牌>
 // 同一个「调用路径」承担两种职责：
-//   - url 指向 m3u8 / 带 type=m3u8  → 返回去插播后的 m3u8 文本
-//   - 否则                            → 官替清洗，返回 JSON（含 qcb=去插播后的地址）
+//   - url 指向 m3u8 / 带 type=m3u8（或 st 令牌类型为 m3u8） → 返回去插播后的 m3u8 文本
+//   - 否则                                                     → 官替清洗，返回 JSON（含 qcb=去插播后的地址）
+//
+// 安全设置开启 ST 加密后，只接受 st=<AES-GCM 加密令牌>，裸 url 调用会被拒绝（防接口被盗用）
 func handleClean(c *gin.Context) {
+	sec := config.GetSecurity()
+	stToken := strings.TrimSpace(c.Query("st"))
 	targetURL := strings.TrimSpace(c.Query("url"))
+
+	// st 令牌优先：解密出真实地址 + 类型
+	if stToken != "" {
+		p, err := service.DecodeST(stToken, sec.STSecret)
+		if err != nil {
+			c.JSON(http.StatusForbidden, model.Fail(403, err.Error()))
+			return
+		}
+		targetURL = p.U
+		if p.T == "m3u8" || isM3U8Request(c, targetURL) {
+			handleM3U8FilterURL(c, targetURL)
+			return
+		}
+	} else if sec.STEnabled {
+		// 已启用 ST 加密：拒绝裸 url 调用
+		c.JSON(http.StatusForbidden, model.Fail(403, "缺少 st 参数（已启用 ST 加密，请使用服务端下发的加密地址）"))
+		return
+	}
 
 	// 去插播模式：客户端播放器直接取过滤后的 m3u8
 	if isM3U8Request(c, targetURL) {
-		handleM3U8Filter(c)
+		handleM3U8FilterURL(c, targetURL)
 		return
 	}
 
@@ -189,10 +216,15 @@ func isM3U8Request(c *gin.Context, target string) bool {
 	return strings.Contains(strings.ToLower(target), ".m3u8")
 }
 
-// handleM3U8Filter 去插播：拉取 m3u8 索引 → 剔除广告片段 → 返回过滤后的 m3u8
-// url 可以是 m3u8 直链，也可以是播放页（自动解析出直链）；过滤失败时 302 回源保证可播
+// handleM3U8Filter 去插播：从 query 取 url 后转交 handleM3U8FilterURL
 func handleM3U8Filter(c *gin.Context) {
-	target := strings.TrimSpace(c.Query("url"))
+	handleM3U8FilterURL(c, strings.TrimSpace(c.Query("url")))
+}
+
+// handleM3U8FilterURL 去插播：拉取 m3u8 索引 → 剔除广告片段 → 返回过滤后的 m3u8
+// target 可以是 m3u8 直链，也可以是播放页（自动解析出直链）
+// 未启用 ST 时过滤失败回源 302；启用 ST 后返回 502，避免真实地址外泄
+func handleM3U8FilterURL(c *gin.Context, target string) {
 	if target == "" {
 		c.JSON(http.StatusBadRequest, model.Fail(400, "无url参数"))
 		return
@@ -210,11 +242,16 @@ func handleM3U8Filter(c *gin.Context) {
 	site := config.MatchFilterSite(m3u8URL)
 	res, err := service.FilterM3U8(m3u8URL, site)
 	if err != nil {
-		// 过滤失败 → 回源（尽量保证仍可播放）
 		service.AddFilterRecord(model.FilterRecord{
 			Time: time.Now().Format("2006-01-02 15:04:05"), URL: m3u8URL,
 			CostMS: time.Since(start).Milliseconds(), OK: false, Error: err.Error(),
 		})
+		// 启用 ST 加密时不能回源跳转：302 会把真实地址暴露给客户端
+		if config.GetSecurity().STEnabled {
+			c.JSON(http.StatusBadGateway, model.Fail(502, "去插播失败："+err.Error()))
+			return
+		}
+		// 未启用 ST：回源（尽量保证仍可播放）
 		c.Redirect(http.StatusFound, m3u8URL)
 		return
 	}
@@ -258,11 +295,24 @@ func publicBase(c *gin.Context) string {
 
 // buildQCB 生成「去插播后的播放地址」：<主调用路径>/?type=m3u8&url=<播放地址>
 func buildQCB(c *gin.Context, playURL string) string {
+	return buildCleanURL(c, playURL, "m3u8")
+}
+
+// buildCleanURL 生成经本服务清洗的地址；启用 ST 加密时改用 st=<AES-GCM 令牌>，
+// 真实地址被加密，客户端只能回到本服务解密，且令牌到期自动失效
+func buildCleanURL(c *gin.Context, playURL, typ string) string {
 	playURL = strings.TrimSpace(playURL)
 	if playURL == "" {
 		return ""
 	}
-	return publicBase(c) + config.PrimaryCleanPath() + "/?type=m3u8&url=" + url.QueryEscape(playURL)
+	base := publicBase(c) + config.PrimaryCleanPath() + "/"
+	sec := config.GetSecurity()
+	if sec.STEnabled {
+		if tk, err := service.EncodeST(playURL, typ, sec.STSecret, sec.STExpire); err == nil && tk != "" {
+			return base + "?st=" + url.QueryEscape(tk)
+		}
+	}
+	return base + "?type=" + url.QueryEscape(typ) + "&url=" + url.QueryEscape(playURL)
 }
 
 // handleSearch GET /api/search/?wd=&episode=

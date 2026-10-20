@@ -106,8 +106,12 @@ type UpdaterConfig struct {
 	Mirrors  []string `yaml:"mirrors"`
 }
 
+// SecurityConfig 安全配置
 type SecurityConfig struct {
-	APIKey string `yaml:"api_key"`
+	APIKey    string `yaml:"api_key"`    // API 更新接口密钥（留空=无需鉴权）
+	STEnabled bool   `yaml:"st_enabled"` // 是否启用 ST 加密（开启后 clean 接口只接受 st 令牌）
+	STSecret  string `yaml:"st_secret"`  // ST 加密密钥（AES-256，服务端自动生成）
+	STExpire  int    `yaml:"st_expire"`  // ST 令牌有效期（秒），0=永久；默认 300
 }
 
 // BrowserConfig 无头浏览器渲染配置（方案1 主方案）

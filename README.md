@@ -142,6 +142,7 @@ curl http://127.0.0.1:9991/api/version
 | 🔍 M3U8 广告分析 | 独立分析页：粘贴播放页 / m3u8 → 自动解析、探测插播广告（字幕 / 贴片）、生成去广告列表；**双播放器对比**（直连原始 vs 无广告过滤后）、TS 片段明细表、原始 / 过滤后 m3u8 对比、一键生成过滤规则 |
 | 🚫 广告过滤 | 一级菜单，子页签统管两类去广告：**去插播（M3U8）** 与 **画面遮罩（内嵌广告）**（站点/区域规则 CRUD + 探测 / 测试 / 调用日志 / 16:9 实时预览；画面遮罩支持**粘贴链接智能识别**与**绑定资源站**） |
 | 🛣️ 系统设置 | 路径设置：自定义 `/api/clean/` 调用路径 |
+| 🛡️ 安全设置 | **ST 加密 + 失效**：令牌 AES-256-GCM 加密、只保存在服务端；开启后 clean 接口只接受 `st` 令牌，裸 `url` 调用直接 403，令牌到期自动失效；支持密钥重置与令牌自测；含 API Key 配置 |
 | ⚙️ 系统 · 更新 | 版本 / 构建时间 / 更新仓库 / 定时更新状态 |
 
 功能明细：
@@ -158,6 +159,7 @@ curl http://127.0.0.1:9991/api/version
 | 🚫 广告过滤 · 去插播（M3U8） | 站点规则 CRUD（解析方式 / 检测方式 / 索引模式 / 码率 / 匹配前缀与正则 / 时长指纹 / 片段级正则）；**新增规则支持「播放链接自动分析填入」**：粘贴资源站播放链接 → 自动解析 m3u8 + 探测广告 → 一键填表；所有下拉项以「英文(中文)」标注，如 `auto(自动（推荐）)`；「探测」给出广告区间与指纹建议、「测试」返回保留/剔除与过滤后播放列表、「调用日志」查看最近 200 次去插播调用 |
 | 🖼️ 广告过滤 · 画面遮罩（内嵌广告） | 画面遮罩规则 CRUD（名称 / 启用 / 排序 / 匹配前缀与正则 / **绑定资源站** / 备注）；每条规则含一至多个**遮罩区域**（`x`/`y`=左上角、`w`/`h`=宽高，均为相对比例 `0~1`，跨分辨率跨剧通用；模式 `cover(纯色遮挡)` / `blur(模糊)`、颜色、透明度、备注），弹窗内置 **16:9 实时预览**，所见即所得；**新增规则支持「粘贴链接自动识别」**：自动解析匹配域名、推荐绑定资源站、抓帧识别广告位置 / 大小并给出候选区域一键填入；命中播放域名**或绑定的资源站**后在 `/api/clean` 响应里以 `ad` 字段下发，播放器按相对坐标叠加遮罩（零转码、零带宽、秒级生效） |
 | 🛣️ 系统设置 · 路径设置 | 增删多条调用路径（`http://` / `https://`），任一启用路径命中即生效；全部停用时回退默认 `/api/clean` |
+| 🛡️ 安全设置 · ST 加密 + 失效 | 令牌内容为「真实地址 + 类型 + 过期时间」，使用 **AES-256-GCM** 加密，密钥仅保存在服务端（`data/security.yaml`），客户端只拿到密文 `st=...`，**解密必须回到本服务**；开启后 clean 接口只接受 `st`，裸 `url` 调用返回 403，令牌到期自动失效、篡改即拒；支持一键重置密钥（旧令牌立即失效）与**令牌自测**（生成令牌 / 完整地址 / 过期时间） |
 | ⚙️ 系统 / 更新 | 查看 当前版本 / 远程最新版本 / 更新渠道 / 构建时间 / 更新仓库 / 定时更新状态（**分卡片布局**：版本信息 + 更新渠道，操作按钮统一在底部）；**「更新渠道」下拉可切换正式版 / 先行版并保存**；「检查更新」只查不更、「立即更新」触发异步更新并展示**实时进度条**（检查→下载→替换→重启），服务自重启后自动检测恢复并刷新页面（仅在远程版本更高时执行） |
 
 - 登录态由 Cookie 会话维持，有效期 `admin.session_hours` 小时
@@ -173,18 +175,21 @@ curl http://127.0.0.1:9991/api/version
 
 ## 📡 API 接口
 
-### `GET /api/clean/?url=<待清洗URL>[&wd=<剧名>&episode=<集数>]`
+### `GET /api/clean/?url=<待清洗URL>[&wd=<剧名>&episode=<集数>]` 或 `?st=<加密令牌>`
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `url` | 否* | 官方视频平台链接（方案1/3 解析剧名+集数） |
+| `st` | 否* | ST 加密令牌（安全设置开启后**必填**，替代 `url`；服务端解密后使用其中地址） |
+| `type` | 否 | `m3u8` / `hls` 时返回去插播后的 m3u8；ST 令牌内部已带类型，可不传 |
 | `wd` / `title` | 否* | 剧名（方案2，客户端直接传参；与 `url` 同时传则优先采用） |
 | `episode` / `jj` | 否 | 集数，如 `第5集` / `05` |
 
-> \* `url` 与 `wd` 至少提供一个。仅传 `wd` 时走方案2，无需官方解析。
+> \* `url` / `st` / `wd` 至少提供一个。仅传 `wd` 时走方案2，无需官方解析。
 >
 > - 方案1：`/api/clean/?url=https://www.iqiyi.com/a_xxx.html`（无头渲染抓剧名）
 > - 方案2：`/api/clean/?wd=狂飙&episode=第5集`（直接传参）
+> - ST 加密：`/api/clean/?st=<令牌>`（开启后裸 `url` 调用返回 403；令牌篡改 / 过期同样 403）
 
 **成功响应：**
 
@@ -288,6 +293,9 @@ curl http://127.0.0.1:9991/api/version
 | POST | `/api/admin/adfilter/overlay/identify` | **链接智能识别**（`url`）：自动解析匹配域名 / 命中资源站（可绑定）/ 候选遮罩区域；`kind` 为 page/m3u8/image/unknown，`method` 为 frame-detect/preset/image-ratio |
 | GET | `/api/admin/cleanpaths` | 查看调用路径设置 |
 | POST | `/api/admin/cleanpaths` | 保存调用路径设置（立即生效） |
+| GET | `/api/admin/security` | 查看安全设置（ST 开关 / 有效期 / 密钥脱敏 / API Key） |
+| POST | `/api/admin/security` | 保存安全设置（`st_enabled` / `st_expire` / `api_key`；`reset_secret=true` 重新生成密钥） |
+| POST | `/api/admin/security/st-token` | 用当前密钥为指定地址生成 ST 令牌（`url` / `type`），返回 `token` / `clean_url` / `expire_at` |
 | POST | `/api/admin/reload` | 热重载配置 |
 
 > `id` 支持资源站 ID 或名称。未找到返回 `404`；测试/同步失败返回 `code: 400` + 原因。
@@ -335,6 +343,7 @@ MXGJGT/
 │   ├── cleanpaths.yaml     # 自定义调用路径（系统设置 · 路径设置）
 │   ├── filter_sites.yaml   # M3U8 广告过滤站点规则
 │   ├── ad_overlay.yaml     # 画面遮罩（内嵌广告）规则
+│   ├── security.yaml       # 安全设置（ST 加密密钥 / 有效期 / API Key，后台保存后生成）
 │   └── updater.yaml        # 更新渠道（stable 正式版 / prerelease 先行版）
 ├── static/
 │   └── 404.html            # 可选的自定义伪装 HTML（默认内置 nginx 风格 404）
@@ -427,15 +436,15 @@ channel: stable   # stable=正式版（跟随 main 正式发布）/ prerelease=�
 
 ```bash
 # 正式版（stable 渠道）— main 分支
-git tag v0.0.20 && git push origin v0.0.20
+git tag v0.0.21 && git push origin v0.0.21
 
 # 先行版（prerelease 渠道）— 开发分支
-git tag v0.0.20-dev.1 && git push origin v0.0.20-dev.1
+git tag v0.0.21-dev.1 && git push origin v0.0.21-dev.1
 ```
 
 - 矩阵构建：Linux `amd64`/`arm64`、Windows `amd64`、macOS `amd64`/`arm64`
 - 产物自动打包 `zip` + `SHA256.txt`，挂到 GitHub Release
-- **版本号含 `-` 后缀的 tag（如 `v0.0.20-dev.1`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
+- **版本号含 `-` 后缀的 tag（如 `v0.0.21-dev.1`）自动标记为 pre-release**，故正式版渠道（`/releases/latest`）不会拉到先行版
 - 版本号经 `-ldflags -X mxgjgt/model.Version=` 注入
 
 ---

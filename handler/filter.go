@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -219,7 +218,8 @@ func handleAdminFilterAnalyzePlay(c *gin.Context) {
 		return
 	}
 	// 无广告播放地址：通过本服务去插播接口返回过滤后的 m3u8
-	res.PlayURLAdFree = publicBase(c) + config.PrimaryCleanPath() + "/?type=m3u8&url=" + url.QueryEscape(res.IndexURL)
+	// （启用 ST 加密时自动生成 st 令牌，真实地址不外泄）
+	res.PlayURLAdFree = buildCleanURL(c, res.IndexURL, "m3u8")
 	c.JSON(http.StatusOK, model.Response{
 		Code: 200,
 		Msg:  "分析完成",

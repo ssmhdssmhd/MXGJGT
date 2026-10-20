@@ -1,3 +1,61 @@
+MXGJGT v0.0.21-dev.1 202610201428
+================================
+
+## 先行版新增：安全设置 · ST 加密 + 失效（防接口 / 地址盗用）
+
+> 需求：创建「安全设置」，里面可配置 ST 加密 + 失效；必须访问本服务才能解密，防止被别人盗用。
+
+### ✨ 新增
+
+**1. 侧边栏「安全设置」独立页**
+
+- 位于「系统设置」与「系统 · 更新」之间（`data-tab="security"`）
+- 可视化配置：ST 加密开关、令牌有效期、加密密钥（脱敏展示 / 一键重置）、API Key
+
+**2. ST 加密 + 失效**
+
+- 令牌内容：`真实地址 + 类型(m3u8/json) + 过期时间`，使用 **AES-256-GCM** 加密
+- 密钥仅在服务端生成与保存（`data/security.yaml`），客户端拿到的只是密文 `st=...`
+- **解密只能回到本服务完成**：别人即使拿到链接也拿不到真实地址
+- 令牌到期自动失效；重置密钥会让此前所有令牌立即失效
+
+**3. 接口行为（`/api/clean`）**
+
+- 启用后只接受 `?st=<令牌>`，**裸 `?url=` 调用直接 403**，防止接口被白嫖
+- 令牌被篡改 / 密钥不匹配 / 已过期 → 403 并给出明确原因
+- 去插播失败时不再 302 回源（避免真实地址外泄），改为 502
+- 关闭时行为与之前完全一致（兼容旧客户端）
+
+**4. 后台接口**
+
+- `GET /api/admin/security`：读取安全配置（密钥脱敏）
+- `POST /api/admin/security`：保存；`reset_secret=true` 重新生成密钥
+- `POST /api/admin/security/st-token`：用当前密钥为指定地址生成令牌（自测 / 对接验证）
+
+**5. 令牌自测面板**
+
+- 输入播放地址 / m3u8 + 类型 → 生成 st 令牌、完整调用地址、过期时间
+- 支持一键复制令牌 / 地址、新窗口直接验证
+
+### 📁 变更文件
+
+```
+new:      service/st.go           # AES-256-GCM 令牌加解密 + 密钥生成 + 有效期校验
+new:      handler/security.go     # 安全设置读写 / 密钥重置 / 令牌自测接口
+modified: model/types.go          # SecurityConfig 新增 st_enabled / st_secret / st_expire
+modified: config/config.go        # GetSecurity / SaveSecurity + 加载 data/security.yaml
+modified: handler/api.go          # clean 支持 st 解密；裸 url 拒绝；ST 下失败不回源
+modified: handler/filter.go       # 无广告播放地址统一走 buildCleanURL（自动套用 ST）
+modified: handler/mxadmin.html    # 安全设置页 + 侧边栏菜单 + 令牌自测
+modified: data/config.yaml        # security 段补充 ST 配置说明
+modified: model/version.go        # 0.0.20-dev.1 → 0.0.21-dev.1
+modified: Makefile                # VERSION 0.0.21-dev.1
+modified: README.md               # 安全设置菜单 / 功能说明
+modified: update.log              # 本更新日志
+```
+
+================================
+
 MXGJGT v0.0.20-dev.1 202610192006
 ================================
 

@@ -125,6 +125,36 @@ func GetOverlayRules() []model.AdOverlayRule {
 	return overlayRules
 }
 
+// GetSecurity 获取安全配置（ST 加密 / API Key）
+func GetSecurity() model.SecurityConfig {
+	mu.RLock()
+	defer mu.RUnlock()
+	if appConfig == nil {
+		return model.SecurityConfig{}
+	}
+	return appConfig.Security
+}
+
+// SaveSecurity 保存安全配置到 data/security.yaml
+// （独立文件存储，避免重写 config.yaml 丢失注释）
+func SaveSecurity(sec model.SecurityConfig) error {
+	sec.APIKey = strings.TrimSpace(sec.APIKey)
+	sec.STSecret = strings.TrimSpace(sec.STSecret)
+	if sec.STExpire < 0 {
+		sec.STExpire = 0
+	}
+	mu.Lock()
+	if appConfig != nil {
+		appConfig.Security = sec
+	}
+	mu.Unlock()
+	data, err := yaml.Marshal(sec)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "security.yaml"), data, 0644)
+}
+
 // ===== 首次启动写模板（仅当文件不存在时） =====
 
 func EnsureDefaults() {
@@ -161,6 +191,19 @@ func LoadConfig(dir string) error {
 	}
 	if appConfig == nil {
 		appConfig = defaultConfig()
+	}
+
+	// security.yaml —— 安全设置（ST 加密 / 失效 / API Key）
+	// 独立文件优先于 config.yaml 的 security 段，便于后台可视化保存
+	securityFile := filepath.Join(dir, "security.yaml")
+	if data, err := os.ReadFile(securityFile); err == nil {
+		var s model.SecurityConfig
+		if yaml.Unmarshal(data, &s) == nil {
+			appConfig.Security = s
+		}
+	}
+	if appConfig.Security.STExpire < 0 {
+		appConfig.Security.STExpire = 0
 	}
 
 	// sites.yaml
@@ -690,6 +733,11 @@ updater:
 
 security:
   api_key: ""
+  # ST 加密 + 失效：建议在后台「安全设置」里可视化配置
+  # 保存后会写入 data/security.yaml（优先级高于本段），密钥仅保存在服务端
+  st_enabled: false
+  st_secret: ""
+  st_expire: 300
 
 # 网页后台（登录后可在浏览器管理资源站 / 映射 / 更新）
 # 访问 http://<域名>:9991/mx/  → 登录页

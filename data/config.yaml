@@ -23,3 +23,8 @@ updater:
 security:
   # 为空则不鉴权；设置后 /api/update 需携带 X-API-Key 或 ?key=xxx
   api_key: ""
+  # ST 加密 + 失效：建议在后台「安全设置」里可视化配置
+  # 后台保存后会写入 data/security.yaml（优先级高于本段），密钥仅保存在服务端
+  st_enabled: false
+  st_secret: ""
+  st_expire: 300
