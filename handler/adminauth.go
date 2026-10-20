@@ -107,6 +107,9 @@ func adminAuth() gin.HandlerFunc {
 // ===== 后台页面 =====
 
 func handleAdminPage(c *gin.Context) {
+	// 后台页面随二进制更新：禁止浏览器缓存旧页面，避免升级后看不到新增功能
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", adminPageHTML)
 }
 

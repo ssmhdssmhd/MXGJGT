@@ -491,6 +491,56 @@
           </h2>
           <p class="empty">参考巨量播放器公开能力整理，只保留服务端可落地的部分：广告屏蔽（插播片段 + 画面遮罩）、智能选线、备用入口、嵌入代码。保存后立即对 <code class="mono">/api/clean</code> 与 <code class="mono">/api/player/config</code> 生效。</p>
 
+          <!-- 播放器预览（巨量播放器） -->
+          <div class="syscard" style="margin-bottom:14px">
+            <h4>播放器预览 · 巨量播放器</h4>
+            <p class="hint">粘贴 M3U8 / 播放页即可在本页直接播放。默认先经本服务「清洗地址」再交给播放器：广告屏蔽、插播过滤与 ST 加密都会生效，真实地址不外泄。</p>
+            <div class="row">
+              <div class="field" style="flex:1;min-width:240px">
+                <label>播放地址 / M3U8</label>
+                <input id="pl-preview-url" placeholder="https://xxx.com/index.m3u8">
+              </div>
+              <div class="field">
+                <label>播放器入口</label>
+                <input id="pl-preview-entry" list="pl-preview-entries" placeholder="https://jimaoys99.com">
+                <datalist id="pl-preview-entries">
+                  <option value="https://jimaoys99.com">主入口</option>
+                  <option value="https://jimaoys97.com">备用入口一</option>
+                  <option value="https://jimaoys95.com">备用入口二</option>
+                </datalist>
+              </div>
+              <div class="field">
+                <label>地址处理</label>
+                <select id="pl-preview-clean">
+                  <option value="1">经本服务清洗（推荐）</option>
+                  <option value="0">原始地址直连</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>智能匹配</label>
+                <select id="pl-preview-match">
+                  <option value="0">仅播放传入地址</option>
+                  <option value="1">允许匹配片库线路</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="btn primary" id="btn-pl-preview" type="button">播放</button>
+              <button class="btn ghost" id="btn-pl-preview-open" type="button">新窗口打开</button>
+              <button class="btn ghost" id="btn-pl-preview-copy" type="button">复制播放地址</button>
+              <div class="field" style="flex:1;min-width:220px;margin:0">
+                <input id="pl-preview-link" readonly placeholder="播放地址生成后可复制分享">
+              </div>
+            </div>
+            <div style="position:relative;width:100%;aspect-ratio:16/9;background:#0b0714;border-radius:14px;overflow:hidden;margin-top:12px">
+              <iframe id="pl-preview-frame" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen
+                style="position:absolute;inset:0;width:100%;height:100%;border:0" src="about:blank"></iframe>
+              <div id="pl-preview-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9c94b8;font-size:14px;text-align:center;padding:20px">粘贴地址后点击「播放」，这里会加载巨量播放器</div>
+            </div>
+            <p class="hint" style="margin-top:8px">主入口打不开时切换备用入口；播放器页面由巨量提供，视频由浏览器直接向片源拉流。加载后若未自动播放（浏览器自动播放限制），在播放器内点一下播放按钮即可。iPhone 嵌入时走系统视频全屏，画面遮挡会在退出全屏后恢复。</p>
+            <p class="hint" id="pl-preview-hint"></p>
+          </div>
+
           <div class="sysgrid">
             <div class="syscard">
               <h4>广告屏蔽</h4>
@@ -2301,6 +2351,76 @@
     if (!playerBest) { toast("请先测速，或本次没有可用线路"); return; }
     copyText(playerBest);
   };
+
+  // ===== 播放器预览（巨量播放器） =====
+  var JL_DEFAULT_ENTRY = "https://jimaoys99.com";
+  function jlEntry() {
+    var e = ($("#pl-preview-entry").value || JL_DEFAULT_ENTRY).trim();
+    if (!/^https?:\/\//i.test(e)) e = "https://" + e;
+    return e.replace(/\/+$/, "");
+  }
+  function jlPlayerURL(videoURL, matchOn) {
+    var u = jlEntry() + "/parse?url=" + encodeURIComponent(videoURL);
+    if (!matchOn) u += "&match=0";
+    return u;
+  }
+  function showPreview(p) {
+    if (!/^https?:\/\//i.test(p)) { toast("播放地址无效"); return; }
+    $("#pl-preview-link").value = p;
+    $("#pl-preview-empty").classList.add("hide");
+    $("#pl-preview-frame").src = p;
+    try {
+      localStorage.setItem("mx_pl_preview_entry", $("#pl-preview-entry").value.trim());
+      localStorage.setItem("mx_pl_preview_clean", $("#pl-preview-clean").value);
+      localStorage.setItem("mx_pl_preview_match", $("#pl-preview-match").value);
+    } catch (e) { }
+  }
+  function previewHint() {
+    var clean = $("#pl-preview-clean").value === "1";
+    $("#pl-preview-hint").textContent = clean
+      ? "清洗地址优先使用「备用入口」第一个域名（未配置时用当前访问域名）；该地址必须能公网访问，否则播放器会提示「请提供有效的公网 HTTP(S) M3U8 地址」。"
+      : "当前直接使用原始地址，不经过本服务：去插播与 ST 加密不生效，仅用于对比播放器效果。";
+  }
+  function resolvePreviewURL(cb) {
+    var raw = $("#pl-preview-url").value.trim();
+    if (!raw) { toast("请先填写播放地址"); return; }
+    if (!/^https?:\/\//i.test(raw)) { toast("请填写 http(s) 播放地址"); return; }
+    $("#pl-preview-entry").value = jlEntry();
+    previewHint();
+    var matchOn = $("#pl-preview-match").value === "1";
+    if ($("#pl-preview-clean").value !== "1") { cb(jlPlayerURL(raw, matchOn)); return; }
+    api("/api/admin/player/embed", {
+      method: "POST",
+      body: { url: raw, type: "iframe", base: "" }
+    }).then(function (r) {
+      if (r.code !== 200 || !r.data || !r.data.clean_url) { toast(r.msg || "生成清洗地址失败"); return; }
+      cb(jlPlayerURL(r.data.clean_url, matchOn));
+    }).catch(function (e) { toast("生成清洗地址失败：" + (e.message || "网络错误")); });
+  }
+  $("#btn-pl-preview").onclick = function () { resolvePreviewURL(showPreview); };
+  $("#btn-pl-preview-open").onclick = function () {
+    var w = window.open("", "_blank");
+    resolvePreviewURL(function (u) {
+      if (w) { w.location.href = u; } else { window.open(u, "_blank"); }
+    });
+  };
+  $("#btn-pl-preview-copy").onclick = function () {
+    var u = $("#pl-preview-link").value.trim();
+    if (!u) { toast("请先点击「播放」生成地址"); return; }
+    copyText(u);
+  };
+  $("#pl-preview-clean").onchange = previewHint;
+  (function () {
+    try {
+      $("#pl-preview-entry").value = localStorage.getItem("mx_pl_preview_entry") || JL_DEFAULT_ENTRY;
+      $("#pl-preview-clean").value = localStorage.getItem("mx_pl_preview_clean") || "1";
+      $("#pl-preview-match").value = localStorage.getItem("mx_pl_preview_match") || "0";
+    } catch (e) {
+      $("#pl-preview-entry").value = JL_DEFAULT_ENTRY;
+    }
+  })();
+  previewHint();
+
   $("#btn-embed").onclick = function () {
     var u = $("#pl-embed-url").value.trim();
     if (!u) { toast("请填写播放地址或 m3u8 地址"); return; }
